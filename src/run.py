@@ -37,8 +37,9 @@ search = GitPullRequestSearchCriteria(repository_id=repository_id, status=status
 prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_id, search, project, top=top)
 
 for rule in rules:
-	if p:= rule.get('author_pattern'):
-		rule['author_regex'] = re.compile(p, re.IGNORECASE)
+	for name in ('author', 'description', 'title'):
+		if pat := rule.get(f'{name}_pattern'):
+			rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE)
 
 for pr in prs:
 	author: IdentityRef = pr.created_by # type: ignore
@@ -64,18 +65,25 @@ for pr in prs:
 		continue
 
 	for rule in rules:
+		# All checks must match.
 		vote=rule['vote']
-		is_match = False
-		if (author_regex := rule.get('author_regex')) is not None and (author_regex.match(author.display_name) or author_regex.match(author.unique_name)):
-			is_match = True
+		if (author_regex := rule.get('author_regex')) is not None:
+			if not author_regex.match(author.display_name) and not author_regex.match(author.unique_name):
+				continue
+		
+		should_continue = False
+		for name in ('description', 'title'):
+			if (regex := rule.get(f'{name}_regex')) is not None:
+				if not regex.match(pr.title):
+					should_continue = True
+					break
+		if should_continue:
+			continue
 
 		# TODO Add more rules.
-
 		print(rule)
-		print(f"matches: {is_match}")
-		if is_match:
-			reviewer = IdentityRefWithVote(vote=vote)
-			git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=None)
+		reviewer = IdentityRefWithVote(vote=vote)
+		git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=None)
 				
 	
 	
