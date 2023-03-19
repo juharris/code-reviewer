@@ -1,0 +1,2 @@
+azure-devops==6.0.0b4
+PyYAML==6.0
