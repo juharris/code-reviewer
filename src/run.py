@@ -69,6 +69,8 @@ for pr in prs:
 		if (author_regex := rule.get('author_regex')) is not None and (author_regex.match(author.display_name) or author_regex.match(author.unique_name)):
 			is_match = True
 
+		# TODO Add more rules.
+
 		print(rule)
 		print(f"matches: {is_match}")
 		if is_match:
