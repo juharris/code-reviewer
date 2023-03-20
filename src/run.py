@@ -2,7 +2,7 @@ import logging
 import os
 import re
 import sys
-from typing import Collection
+from typing import Collection, List, Optional
 
 import yaml
 from azure.devops.connection import Connection
@@ -55,14 +55,16 @@ for pr in prs:
 	author: IdentityRef = pr.created_by # type: ignore
 	reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
 	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
-	logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
+	logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 
 	current_vote = None
+	reviewer = None
 	for reviewer in reviewers:
 		if reviewer.unique_name == current_user:
 			current_vote = reviewer.vote
 			break
 
+	threads: Optional[List[GitPullRequestCommentThread]] = None
 	for rule in rules:
 		# All checks must match.
 		vote = rule.get('vote')
@@ -70,7 +72,7 @@ for pr in prs:
 		if (author_regex := rule.get('author_regex')) is not None:
 			if not author_regex.match(author.display_name) and not author_regex.match(author.unique_name):
 				continue
-		
+
 		match_found = True
 		for name in attributes_with_patterns:
 			if (regex := rule.get(f'{name}_regex')) is not None:
@@ -86,9 +88,11 @@ for pr in prs:
 		# Can't vote on a draft.
 		if not pr.is_draft and vote is not None and vote != current_vote:
 			current_vote = vote
+			logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 			if not is_dry_run:
 				logging.info("Setting vote: %d", vote)
-				reviewer = IdentityRefWithVote(id=user_id, vote=vote)
+				reviewer = reviewer or IdentityRefWithVote(id=user_id)
+				reviewer.vote = vote
 				git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 			else:
 				logging.info("Would set vote: %d", vote)
@@ -97,7 +101,8 @@ for pr in prs:
 			# Check to see if it's already commented in an active thread.
 			# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
 			has_comment = False
-			threads: Collection[GitPullRequestCommentThread]  = git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			threads = threads or git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			assert threads is not None
 			for thread in threads:
 				comments: Collection[Comment] = thread.comments # type: ignore
 				# Look for the comment in active threads only.
@@ -110,9 +115,11 @@ for pr in prs:
 				if has_comment:
 					break
 			if not has_comment:
+				thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
+				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 				if not is_dry_run:
 					logging.info("Commenting: \"%s\".", comment)
-					thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
 					git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
 				else:
 					logging.info("Would comment: \"%s\".", comment)
+				threads.append(thread)
