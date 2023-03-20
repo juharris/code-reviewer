@@ -8,9 +8,9 @@ import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.core import CoreClient
 from azure.devops.released.git import (Comment, GitClient, GitPullRequest,
-									   GitPullRequestCommentThread,
-									   GitPullRequestSearchCriteria,
-									   IdentityRef, IdentityRefWithVote)
+										GitPullRequestCommentThread,
+										GitPullRequestSearchCriteria,
+										IdentityRef, IdentityRefWithVote)
 from msrest.authentication import BasicAuthentication
 
 config_path = sys.argv[1]
@@ -94,5 +94,5 @@ for pr in prs:
 		if comment is not None:
 			# TODO Check to see if it's already commented, reactivate the thread, and maybe reply again.
 			logging.info("Commenting: \"%s\"", comment)
-			thread = GitPullRequestCommentThread(comments=[Comment(content=comment)])
+			thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
 			git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
