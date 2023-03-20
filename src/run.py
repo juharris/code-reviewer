@@ -57,17 +57,11 @@ for pr in prs:
 	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
 	logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 
-	vote = 0
+	current_vote = None
 	for reviewer in reviewers:
 		if reviewer.unique_name == current_user:
-			vote = reviewer.vote
+			current_vote = reviewer.vote
 			break
-
-	if vote != 0:
-		logging.debug("You already voted on \"%s\".", pr.title)
-		# Already voted.
-		# TODO Run rules but only comment if that rule has not been given as a comment yet or rule would give a different vote.
-		continue
 
 	for rule in rules:
 		# All checks must match.
@@ -90,7 +84,8 @@ for pr in prs:
 
 		logging.debug("Rule matches: %s", rule)
 		# Can't vote on a draft.
-		if not pr.is_draft and vote is not None:
+		if not pr.is_draft and vote is not None and vote != current_vote:
+			current_vote = vote
 			if not is_dry_run:
 				logging.info("Setting vote: %d", vote)
 				reviewer = IdentityRefWithVote(id=user_id, vote=vote)
@@ -99,21 +94,25 @@ for pr in prs:
 				logging.info("Would set vote: %d", vote)
 
 		if comment is not None:
-			# Check to see if it's already commented, reactivate the thread, and maybe reply again.
+			# Check to see if it's already commented in an active thread.
+			# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
 			has_comment = False
 			threads: Collection[GitPullRequestCommentThread]  = git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 			for thread in threads:
 				comments: Collection[Comment] = thread.comments # type: ignore
-				# print(thread.status)
+				# Look for the comment in active threads only.
+				if thread.status != 'active' and thread.status != 'unknown':
+					continue
 				for c in comments:
 					if c.content == comment:
 						has_comment = True
 						break
 				if has_comment:
 					break
-			if not is_dry_run:
-				logging.info("Commenting: \"%s\".", comment)
-				thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
-				git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
-			else:
-				logging.info("Would comment: \"%s\".", comment)
+			if not has_comment:
+				if not is_dry_run:
+					logging.info("Commenting: \"%s\".", comment)
+					thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
+					git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
+				else:
+					logging.info("Would comment: \"%s\".", comment)
