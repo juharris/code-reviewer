@@ -7,9 +7,10 @@ from typing import Collection
 import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.core import CoreClient
-from azure.devops.released.git import (GitClient, GitPullRequest,
-                                       GitPullRequestSearchCriteria,
-                                       IdentityRef, IdentityRefWithVote)
+from azure.devops.released.git import (Comment, GitClient, GitPullRequest,
+									   GitPullRequestCommentThread,
+									   GitPullRequestSearchCriteria,
+									   IdentityRef, IdentityRefWithVote)
 from msrest.authentication import BasicAuthentication
 
 config_path = sys.argv[1]
@@ -25,6 +26,9 @@ status = config.get('status', 'Active')
 rules = config['rules']
 top = config.get('top', 50)
 
+log_level = logging.getLevelName(config.get('log_level', 'INFO'))
+logging.basicConfig(level=log_level)
+
 current_user = config['current_user']
 user_id = config['user_id']
 
@@ -38,35 +42,21 @@ git_client: GitClient = connection.clients.get_git_client()
 search = GitPullRequestSearchCriteria(repository_id=repository_id, status=status, )
 prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_id, search, project, top=top)
 
-# logging.basicConfig(level=logging.DEBUG)
-
-# reviewer = IdentityRefWithVote(id=user_id, vote=0)
-# git_client.update_pull_request_reviewers([reviewer], repository_id, 3759454, project=project)
-# git_client.update_pull_request_reviewers([reviewer], repository_id, 3759454, project=project)
-# reviewer = IdentityRefWithVote(id=user_id, vote=5)
-# git_client.create_pull_request_reviewer(reviewer, repository_id, 3759454, reviewer_id=user_id, project=project)
-# sys.exit(0)
-
 attributes_with_patterns = ('description', 'title')
 for rule in rules:
 	for name in ('author',) + attributes_with_patterns:
 		if pat := rule.get(f'{name}_pattern'):
 			rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE)
 
+start_log = "*" * 100
+
 for pr in prs:
 	author: IdentityRef = pr.created_by # type: ignore
 	reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
-	print()
-	print("*" * 50)
-	print(pr.title)
-	print("*" * 50)
-	print(f"By {author.display_name} ({author.unique_name})")
-	# print("Description:")
-	# print(pr.description)
-	
+	logging.info(f"\n%s\n%s\n%s\nBy %s (%s)", start_log, pr.title, pr.url, author.display_name, author.unique_name)
+
 	vote = 0
 	for reviewer in reviewers:
-		# print(reviewer)
 		if reviewer.unique_name == current_user:
 			vote = reviewer.vote
 			break
@@ -79,7 +69,8 @@ for pr in prs:
 
 	for rule in rules:
 		# All checks must match.
-		vote=rule['vote']
+		vote = rule.get('vote')
+		comment = rule.get('comment')
 		if (author_regex := rule.get('author_regex')) is not None:
 			if not author_regex.match(author.display_name) and not author_regex.match(author.unique_name):
 				continue
@@ -95,8 +86,13 @@ for pr in prs:
 
 		# TODO Add more rules.
 
-		logging.info("Rule matches: %s\nSetting vote: %d", rule, vote)
-		reviewer = IdentityRefWithVote(id=user_id, vote=vote)
-		git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
-	
-	
+		logging.info("Rule matches: %s", rule)
+		if not pr.is_draft and vote is not None:
+			logging.info("Setting vote: %d", vote)
+			reviewer = IdentityRefWithVote(id=user_id, vote=vote)
+			git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+		if comment is not None:
+			# TODO Check to see if it's already commented, reactivate the thread, and maybe reply again.
+			logging.info("Commenting: \"%s\"", comment)
+			thread = GitPullRequestCommentThread(comments=[Comment(content=comment)])
+			git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
