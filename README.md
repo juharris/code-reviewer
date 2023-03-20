@@ -12,5 +12,5 @@ Get a PAT: https://learn.microsoft.com/en-us/azure/devops/organizations/accounts
 
 # Run
 ```bash
-CR_ADO_PAT='YOUR PAT' python src/run.py
+CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
 ```
