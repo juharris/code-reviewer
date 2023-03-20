@@ -8,13 +8,13 @@ import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.core import CoreClient
 from azure.devops.released.git import (Comment, GitClient, GitPullRequest,
-										GitPullRequestCommentThread,
-										GitPullRequestSearchCriteria,
-										IdentityRef, IdentityRefWithVote)
+                                       GitPullRequestCommentThread,
+                                       GitPullRequestSearchCriteria,
+                                       IdentityRef, IdentityRefWithVote)
 from msrest.authentication import BasicAuthentication
 
 config_path = sys.argv[1]
-print("Loading configuration from ", config_path)
+print(f"Loading configuration from {config_path}")
 with open(config_path, 'r') as f:
 	config = yaml.safe_load(f)
 
@@ -31,6 +31,7 @@ logging.basicConfig(level=log_level)
 
 current_user = config['current_user']
 user_id = config['user_id']
+is_dry_run = config.get('is_dry_run', False)
 
 credentials = BasicAuthentication('', personal_access_token)
 connection = Connection(base_url=organization_url, creds=credentials)
@@ -48,12 +49,13 @@ for rule in rules:
 		if pat := rule.get(f'{name}_pattern'):
 			rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE)
 
-start_log = "*" * 100
+log_start = "*" * 100
 
 for pr in prs:
 	author: IdentityRef = pr.created_by # type: ignore
 	reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
-	logging.info(f"\n%s\n%s\n%s\nBy %s (%s)", start_log, pr.title, pr.url, author.display_name, author.unique_name)
+	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
+	logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 
 	vote = 0
 	for reviewer in reviewers:
@@ -86,13 +88,32 @@ for pr in prs:
 
 		# TODO Add more rules.
 
-		logging.info("Rule matches: %s", rule)
+		logging.debug("Rule matches: %s", rule)
+		# Can't vote on a draft.
 		if not pr.is_draft and vote is not None:
-			logging.info("Setting vote: %d", vote)
-			reviewer = IdentityRefWithVote(id=user_id, vote=vote)
-			git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+			if not is_dry_run:
+				logging.info("Setting vote: %d", vote)
+				reviewer = IdentityRefWithVote(id=user_id, vote=vote)
+				git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+			else:
+				logging.info("Would set vote: %d", vote)
+
 		if comment is not None:
-			# TODO Check to see if it's already commented, reactivate the thread, and maybe reply again.
-			logging.info("Commenting: \"%s\"", comment)
-			thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
-			git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
+			# Check to see if it's already commented, reactivate the thread, and maybe reply again.
+			has_comment = False
+			threads: Collection[GitPullRequestCommentThread]  = git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			for thread in threads:
+				comments: Collection[Comment] = thread.comments # type: ignore
+				# print(thread.status)
+				for c in comments:
+					if c.content == comment:
+						has_comment = True
+						break
+				if has_comment:
+					break
+			if not is_dry_run:
+				logging.info("Commenting: \"%s\".", comment)
+				thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
+				git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
+			else:
+				logging.info("Would comment: \"%s\".", comment)
