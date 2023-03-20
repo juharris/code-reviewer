@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import sys
@@ -25,6 +26,7 @@ rules = config['rules']
 top = config.get('top', 50)
 
 current_user = config['current_user']
+user_id = config['user_id']
 
 credentials = BasicAuthentication('', personal_access_token)
 connection = Connection(base_url=organization_url, creds=credentials)
@@ -36,19 +38,29 @@ git_client: GitClient = connection.clients.get_git_client()
 search = GitPullRequestSearchCriteria(repository_id=repository_id, status=status, )
 prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_id, search, project, top=top)
 
+# logging.basicConfig(level=logging.DEBUG)
+
+# reviewer = IdentityRefWithVote(id=user_id, vote=0)
+# git_client.update_pull_request_reviewers([reviewer], repository_id, 3759454, project=project)
+# git_client.update_pull_request_reviewers([reviewer], repository_id, 3759454, project=project)
+# reviewer = IdentityRefWithVote(id=user_id, vote=5)
+# git_client.create_pull_request_reviewer(reviewer, repository_id, 3759454, reviewer_id=user_id, project=project)
+# sys.exit(0)
+
+attributes_with_patterns = ('description', 'title')
 for rule in rules:
-	for name in ('author', 'description', 'title'):
+	for name in ('author',) + attributes_with_patterns:
 		if pat := rule.get(f'{name}_pattern'):
 			rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE)
 
 for pr in prs:
 	author: IdentityRef = pr.created_by # type: ignore
-	print(f"By {author.display_name} ({author.unique_name})")
 	reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
 	print()
 	print("*" * 50)
 	print(pr.title)
 	print("*" * 50)
+	print(f"By {author.display_name} ({author.unique_name})")
 	# print("Description:")
 	# print(pr.description)
 	
@@ -60,6 +72,7 @@ for pr in prs:
 			break
 
 	if vote != 0:
+		logging.debug("You already voted on \"%s\".", pr.title)
 		# Already voted.
 		# TODO Run rules but only comment if that rule has not been given as a comment yet or rule would give a different vote.
 		continue
@@ -71,19 +84,19 @@ for pr in prs:
 			if not author_regex.match(author.display_name) and not author_regex.match(author.unique_name):
 				continue
 		
-		should_continue = False
-		for name in ('description', 'title'):
+		match_found = True
+		for name in attributes_with_patterns:
 			if (regex := rule.get(f'{name}_regex')) is not None:
-				if not regex.match(pr.title):
-					should_continue = True
+				if not regex.match(getattr(pr, name)):
+					match_found = False
 					break
-		if should_continue:
+		if not match_found:
 			continue
 
 		# TODO Add more rules.
-		print(rule)
-		reviewer = IdentityRefWithVote(vote=vote)
-		git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=None)
-				
+
+		logging.info("Rule matches: %s\nSetting vote: %d", rule, vote)
+		reviewer = IdentityRefWithVote(id=user_id, vote=vote)
+		git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 	
 	
