@@ -103,7 +103,8 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 
 		logging.debug("Rule matches: %s", rule)
 		# Can't vote on a draft.
-		if not pr.is_draft and vote is not None and vote != current_vote:
+		# Only vote if the new vote is more rejective (more negative) than the current vote.
+		if not pr.is_draft and vote is not None and vote < current_vote:
 			current_vote = vote
 			logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 			if not is_dry_run:
