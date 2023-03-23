@@ -7,16 +7,21 @@ from typing import Collection, List, Optional
 
 import yaml
 from azure.devops.connection import Connection
-from azure.devops.released.core import CoreClient
-from azure.devops.released.git import (Comment, GitClient, GitPullRequest,
+from azure.devops.released.git import (Comment, GitBaseVersionDescriptor,
+                                       GitClient, GitPullRequest,
                                        GitPullRequestCommentThread,
                                        GitPullRequestSearchCriteria,
-                                       IdentityRef, IdentityRefWithVote)
+                                       GitTargetVersionDescriptor,
+				       GitPullRequestIterationChanges,
+				       GitPullRequestChange,
+									   GitCommitDiffs,
+									   IdentityRef,
+                                       IdentityRefWithVote)
 from msrest.authentication import BasicAuthentication
 
-
-
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
+
+branch_pat = re.compile('^refs/heads/')
 
 log_start = "*" * 100
 attributes_with_patterns = ('description', 'title')
@@ -35,6 +40,7 @@ def load_config(config_path: str) -> dict:
 			if pat := rule.get(f'{name}_pattern'):
 				rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE)
 	return result
+import pdb
 
 
 def review_prs(config: dict):
@@ -46,6 +52,31 @@ def review_prs(config: dict):
 	repository_id = config['repository_id']
 	connection = Connection(base_url=organization_url, creds=credentials)
 	git_client: GitClient = connection.clients.get_git_client()
+
+
+	# TODO Try to get changes.
+	# Maybe try https://stackoverflow.com/questions/61827842/is-there-a-way-to-get-the-raw-diff-of-a-commit-via-the-azure-devops-api
+	# base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
+	base_branch = 'main'
+	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
+	# pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
+	pr_branch = 'juharri/ext-OnNewSegments'
+	target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
+	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=False, base_version_descriptor=base, target_version_descriptor=target)
+	for c in diffs.changes:
+		item = c['item']
+		if not item.get('isFolder'):
+			print(c['changeType'])
+			print(item['path'])
+			print(item)
+		# TODO When gitObjectType is blob, get the content using objectId/originalObjectId.
+		# git_client.get_blob_content(repository_id, item['objectId'], project)
+	# changes: GitPullRequestIterationChanges = git_client.get_pull_request_iteration_changes(repository_id, 3762041, 1, project, top=1000)
+	# change_entries: List[GitPullRequestChange] = changes.change_entries # type: ignore
+	# for c in change_entries:
+	# 	print(c.__dict__)
+	pdb.set_trace()
+	sys.exit(0)
 
 	status = config.get('status', 'Active')
 	top = config.get('top', 50)
@@ -63,6 +94,11 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 	organization_url = config['organization_url']
 	project = config['project']
 	repository_id = config['repository_id']
+
+	
+		
+
+
 	rules = config['rules']
 
 	current_user = config['current_user']
