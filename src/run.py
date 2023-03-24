@@ -3,19 +3,18 @@ import os
 import re
 import sys
 import time
-from typing import Collection, List, Optional
+from typing import Collection, Optional
+import requests
 
 import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.git import (Comment, GitBaseVersionDescriptor,
-                                       GitClient, GitPullRequest,
+                                       GitClient, GitCommitDiffs,
+                                       GitPullRequest, GitPullRequestChange,
                                        GitPullRequestCommentThread,
+                                       GitPullRequestIterationChanges,
                                        GitPullRequestSearchCriteria,
-                                       GitTargetVersionDescriptor,
-				       GitPullRequestIterationChanges,
-				       GitPullRequestChange,
-									   GitCommitDiffs,
-									   IdentityRef,
+                                       GitTargetVersionDescriptor, IdentityRef,
                                        IdentityRefWithVote)
 from msrest.authentication import BasicAuthentication
 
@@ -49,56 +48,30 @@ def review_prs(config: dict):
 
 	organization_url = config['organization_url']
 	project = config['project']
-	repository_id = config['repository_id']
+	repository_id = config.get('repository_id')
+	repository_name = config['repository_name']
 	connection = Connection(base_url=organization_url, creds=credentials)
 	git_client: GitClient = connection.clients.get_git_client()
 
-
-	# TODO Try to get changes.
-	# Maybe try https://stackoverflow.com/questions/61827842/is-there-a-way-to-get-the-raw-diff-of-a-commit-via-the-azure-devops-api
-	# base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
-	base_branch = 'main'
-	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
-	# pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
-	pr_branch = 'juharri/ext-OnNewSegments'
-	target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
-	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=False, base_version_descriptor=base, target_version_descriptor=target)
-	for c in diffs.changes:
-		item = c['item']
-		if not item.get('isFolder'):
-			print(c['changeType'])
-			print(item['path'])
-			print(item)
-		# TODO When gitObjectType is blob, get the content using objectId/originalObjectId.
-		# git_client.get_blob_content(repository_id, item['objectId'], project)
-	# changes: GitPullRequestIterationChanges = git_client.get_pull_request_iteration_changes(repository_id, 3762041, 1, project, top=1000)
-	# change_entries: List[GitPullRequestChange] = changes.change_entries # type: ignore
-	# for c in change_entries:
-	# 	print(c.__dict__)
-	pdb.set_trace()
-	sys.exit(0)
-
 	status = config.get('status', 'Active')
 	top = config.get('top', 50)
-	search = GitPullRequestSearchCriteria(repository_id=repository_id, status=status, )
-	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_id, search, project, top=top)
+	search = GitPullRequestSearchCriteria(repository_id=repository_id or repository_name, status=status, )
+	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_id or repository_name, search, project, top=top)
 	for pr in prs:
-		try:
-			review_pr(config, git_client, pr)
-		except:
-			url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
-			logging.exception(f"Error while reviewing pull request called \"{pr.title}\" at {url}")
+		review_pr(config, git_client, pr)
+		# TODO re-add.
+		# try:
+		# 	review_pr(config, git_client, pr)
+		# except:
+		# 	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
+		# 	logging.exception(f"Error while reviewing pull request called \"{pr.title}\" at {url}")
 
 
 def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 	organization_url = config['organization_url']
 	project = config['project']
-	repository_id = config['repository_id']
-
-	
-		
-
-
+	repository_id = pr.repository.id
+	repository_name = pr.repository.name
 	rules = config['rules']
 
 	current_user = config['current_user']
@@ -110,6 +83,32 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
 	logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 
+	base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
+	# base_branch = 'main'
+	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
+	pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
+	# pr_branch = 'juharri/ext-OnNewSegments'
+	target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
+	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=False, base_version_descriptor=base, target_version_descriptor=target)
+	base_commit = diffs.base_commit
+	changes: list[dict] = diffs.changes # type: ignore
+
+	file_diffs = []
+	for c in changes:
+		item = c['item']
+		if not item.get('isFolder'):
+			print(c['changeType'])
+			print(item['path'])
+			# print(item)
+			original_path = item['path']
+			modified_path =  item['path']
+			diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.target_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":true}}&repositoryId=ff7fd4da-0af5-4e9d-bc92-cb0b0689b4d4'
+			# FIXME Set up auth.
+			diff = requests.get(diff_url, auth=('', personal_access_token)).json()
+			print(diff)
+
+	# pdb.set_trace()
+	# sys.exit(0)
 	current_vote = None
 	reviewer: Optional[IdentityRefWithVote] = None
 	for reviewer in reviewers:
@@ -117,7 +116,7 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 			current_vote = reviewer.vote
 			break
 
-	threads: Optional[List[GitPullRequestCommentThread]] = None
+	threads: Optional[list[GitPullRequestCommentThread]] = None
 	for rule in rules:
 		# All checks must match.
 		vote = rule.get('vote')
