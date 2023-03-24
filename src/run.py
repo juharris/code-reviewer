@@ -43,7 +43,14 @@ import pdb
 
 
 def review_prs(config: dict):
-	personal_access_token = config.get('PAT') or os.environ['CR_ADO_PAT']
+	personal_access_token = config.get('PAT')
+	if not personal_access_token:
+		personal_access_token = os.environ['CR_ADO_PAT']
+		config['PAT'] = personal_access_token
+
+	if not personal_access_token:
+		raise ValueError("No personal access token provided. Please set the CR_ADO_PAT environment variable or add set 'PAT' the config file.")
+
 	credentials = BasicAuthentication('', personal_access_token)
 
 	organization_url = config['organization_url']
@@ -59,7 +66,7 @@ def review_prs(config: dict):
 	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_id or repository_name, search, project, top=top)
 	for pr in prs:
 		review_pr(config, git_client, pr)
-		# TODO re-add.
+		# TODO re-add when done testing.
 		# try:
 		# 	review_pr(config, git_client, pr)
 		# except:
@@ -73,6 +80,7 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 	repository_id = pr.repository.id
 	repository_name = pr.repository.name
 	rules = config['rules']
+	personal_access_token = config['PAT']
 
 	current_user = config['current_user']
 	user_id = config['user_id']
@@ -96,16 +104,20 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 	file_diffs = []
 	for c in changes:
 		item = c['item']
-		if not item.get('isFolder'):
-			print(c['changeType'])
-			print(item['path'])
-			# print(item)
-			original_path = item['path']
+		change_type = c['changeType']
+		# TODO Handle when change_type has multiple values.
+		if not item.get('isFolder') and change_type in ('add', 'edit', 'rename'):
 			modified_path =  item['path']
-			diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.target_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":true}}&repositoryId=ff7fd4da-0af5-4e9d-bc92-cb0b0689b4d4'
-			# FIXME Set up auth.
+			logging.debug("Checking %s", modified_path)
+			# FIXME Get the original path for moved files.
+			original_path = item['path']
+			diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.target_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId=ff7fd4da-0af5-4e9d-bc92-cb0b0689b4d4'
 			diff = requests.get(diff_url, auth=('', personal_access_token)).json()
-			print(diff)
+			for block in diff['blocks']:
+				# print(block)
+				lines = block['mLines']
+				# TODO Check for issues on the lines and comment if a rule matches.
+			# print(diff)
 
 	# pdb.set_trace()
 	# sys.exit(0)
