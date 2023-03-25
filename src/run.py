@@ -69,7 +69,7 @@ def review_prs(config: dict):
 	status = config.get('status', 'Active')
 	top = config.get('top', 50)
 	# TODO Remove (just for testing)
-	source_ref = None #'refs/heads/juharri/ext-OnNewSegments'
+	source_ref = None
 	search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref)
 	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_name, search, project, top=top)
 	for pr in prs:
@@ -102,12 +102,17 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 
 	# FIXME Just get the changes in the current PR.
 
+	# First we need to get the files changed.
+
+	# The following gets too many files if source branch is not up-to-date with the target branch.
 	# The PR branch
 	base_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
 	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
 	# The branch to merge into.
 	target_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
-	target = GitTargetVersionDescriptor(target_version=target_branch, target_version_type='branch')
+	# target = GitTargetVersionDescriptor(target_version=target_branch, target_version_type='branch')
+	target_commit = pr.last_merge_target_commit.commit_id # type: ignore
+	target = GitTargetVersionDescriptor(target_version=target_commit, target_version_type='commit')
 	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=False, base_version_descriptor=base, target_version_descriptor=target)
 	base_commit = diffs.base_commit
 	changes: list[dict] = diffs.changes # type: ignore
