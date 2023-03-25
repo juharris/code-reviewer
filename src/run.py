@@ -1,11 +1,12 @@
 import logging
 import os
+import pdb
 import re
 import sys
 import time
 from typing import Collection, Optional
-import requests
 
+import requests
 import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.git import (Comment, GitBaseVersionDescriptor,
@@ -16,6 +17,7 @@ from azure.devops.released.git import (Comment, GitBaseVersionDescriptor,
                                        GitPullRequestSearchCriteria,
                                        GitTargetVersionDescriptor, IdentityRef,
                                        IdentityRefWithVote)
+from azure.devops.released.profile.profile_client import ProfileClient
 from msrest.authentication import BasicAuthentication
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
@@ -24,6 +26,7 @@ branch_pat = re.compile('^refs/heads/')
 
 log_start = "*" * 100
 attributes_with_patterns = ('description', 'title')
+pr_url_to_latest_commit_seen = {}
 
 def load_config(config_path: str) -> dict:
 	print(f"Loading configuration from {config_path}")
@@ -39,13 +42,13 @@ def load_config(config_path: str) -> dict:
 			if pat := rule.get(f'{name}_pattern'):
 				rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE)
 	return result
-import pdb
+
 
 
 def review_prs(config: dict):
 	personal_access_token = config.get('PAT')
 	if not personal_access_token:
-		personal_access_token = os.environ['CR_ADO_PAT']
+		personal_access_token = os.environ.get('CR_ADO_PAT')
 		config['PAT'] = personal_access_token
 
 	if not personal_access_token:
@@ -55,15 +58,20 @@ def review_prs(config: dict):
 
 	organization_url = config['organization_url']
 	project = config['project']
-	repository_id = config.get('repository_id')
+	repository_id = None # Probably not needed now: config.get('repository_id')
 	repository_name = config['repository_name']
 	connection = Connection(base_url=organization_url, creds=credentials)
 	git_client: GitClient = connection.clients.get_git_client()
+	# TODO Try to get the current user's email and ID, but getting auth issues:
+	# profile_client: ProfileClient = connection.clients.get_profile_client()
+	# r = profile_client.get_profile('me')
 
 	status = config.get('status', 'Active')
 	top = config.get('top', 50)
-	search = GitPullRequestSearchCriteria(repository_id=repository_id or repository_name, status=status, )
-	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_id or repository_name, search, project, top=top)
+	# TODO Remove (just for testing)
+	source_ref = None #'refs/heads/juharri/ext-OnNewSegments'
+	search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref)
+	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_name, search, project, top=top)
 	for pr in prs:
 		review_pr(config, git_client, pr)
 		# TODO re-add when done testing.
@@ -82,6 +90,7 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 	rules = config['rules']
 	personal_access_token = config['PAT']
 
+	# TODO Try to automate getting the current user email and ID.
 	current_user = config['current_user']
 	user_id = config['user_id']
 	is_dry_run = config.get('is_dry_run', False)
@@ -91,12 +100,14 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
 	logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
 
-	base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
-	# base_branch = 'main'
+	# FIXME Just get the changes in the current PR.
+
+	# The PR branch
+	base_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
 	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
-	pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
-	# pr_branch = 'juharri/ext-OnNewSegments'
-	target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
+	# The branch to merge into.
+	target_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
+	target = GitTargetVersionDescriptor(target_version=target_branch, target_version_type='branch')
 	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=False, base_version_descriptor=base, target_version_descriptor=target)
 	base_commit = diffs.base_commit
 	changes: list[dict] = diffs.changes # type: ignore
@@ -111,8 +122,9 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 			logging.debug("Checking %s", modified_path)
 			# FIXME Get the original path for moved files.
 			original_path = item['path']
-			diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.target_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId=ff7fd4da-0af5-4e9d-bc92-cb0b0689b4d4'
+			diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.target_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
 			diff = requests.get(diff_url, auth=('', personal_access_token)).json()
+
 			for block in diff['blocks']:
 				# print(block)
 				lines = block['mLines']
