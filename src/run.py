@@ -40,6 +40,8 @@ def load_config(config_path: str) -> dict:
 		for name in ('author',) + attributes_with_patterns:
 			if pat := rule.get(f'{name}_pattern'):
 				rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE)
+		if pat := rule.get('diff_pattern'):
+			rule['diff_regex'] = re.compile(pat, re.MULTILINE)
 	return result
 
 
@@ -97,6 +99,7 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest, pr_url: s
 	reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
 	logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
 
+	# TODO Move to a new method.
 	latest_commit = pr.last_merge_source_commit
 	if latest_commit == pr_url_to_latest_commit_seen.get(pr_url):
 		logging.debug("Skipping checking diff for commit already seen (%s).", latest_commit)
@@ -110,7 +113,6 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest, pr_url: s
 		base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
 
 		diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
-		base_commit = diffs.base_commit
 		changes: list[dict] = diffs.changes # type: ignore
 
 		file_diffs = []
@@ -136,10 +138,17 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest, pr_url: s
 						continue
 					assert change_type == 1
 						
-					# print(block)
-					lines = block['mLines']
-					# TODO Check for issues on the lines and comment if a rule matches.
-				# print(diff)
+					lines = '\n'.join(block['mLines'])
+					for rule in rules:
+						if (regex := rule.get('diff_regex')) is not None:
+							if regex.match(lines):
+								if (comment := rule.get('comment')) is not None:
+									# TODO Submit comment if it is not already there.
+									pass
+								if (vote := rule.get('vote')) is not None:
+									# TODO Submit vote.
+									pass
+
 	current_vote = None
 	reviewer: Optional[IdentityRefWithVote] = None
 	for reviewer in reviewers:
@@ -186,27 +195,32 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest, pr_url: s
 			# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
 			has_comment = False
 			threads = threads or git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-			assert threads is not None
-			for thread in threads:
-				comments: Collection[Comment] = thread.comments # type: ignore
-				# Look for the comment in active threads only.
-				if thread.status != 'active' and thread.status != 'unknown':
-					continue
-				for c in comments:
-					if c.content == comment:
-						has_comment = True
-						break
-				if has_comment:
-					break
+			has_comment = does_comment_exist(threads, comment)
 			if not has_comment:
-				thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
-				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
-				if not is_dry_run:
-					logging.info("Commenting: \"%s\".", comment)
-					git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
-				else:
-					logging.info("Would comment: \"%s\".", comment)
-				threads.append(thread)
+				send_comment(git_client, pr, pr_url, project, repository_id, is_dry_run, author, comment, threads)
+
+def does_comment_exist(threads: list[GitPullRequestCommentThread], comment: str) -> bool:
+	result = False
+	assert threads is not None
+	for thread in threads:
+		comments: Collection[Comment] = thread.comments # type: ignore
+		# Look for the comment in active threads only.
+		if thread.status != 'active' and thread.status != 'unknown':
+			continue
+		for c in comments:
+			if c.content == comment:
+				return True
+	return result
+
+def send_comment(git_client: GitClient, pr: GitPullRequest, pr_url: str, project: str, repository_id: str, is_dry_run: bool, author, comment: str, threads: list[GitPullRequestCommentThread]):
+    thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
+    logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
+    if not is_dry_run:
+     logging.info("Commenting: \"%s\".", comment)
+     git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
+    else:
+     logging.info("Would comment: \"%s\".", comment)
+    threads.append(thread)
 
 
 def main():
