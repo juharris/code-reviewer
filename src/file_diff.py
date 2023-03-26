@@ -4,7 +4,11 @@ from typing import TypedDict
 
 class Block(TypedDict):
 	changeType: int
-	"""The type of change. 0 means no change, 1 means added, 2 means removed."""
+	"""
+	The type of change.
+	0 means no change, 1 means added, 2 means removed.
+	3 can happen, it's unclear what is means. Maybe it's a conflict?
+	"""
 
 	mLines: list[str]
 	mLine: int

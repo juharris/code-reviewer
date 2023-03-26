@@ -8,18 +8,17 @@ from typing import Collection, Optional
 import requests
 import yaml
 from azure.devops.connection import Connection
-from azure.devops.released.git import (Comment, GitBaseVersionDescriptor,
-                                       GitClient, GitCommitDiffs,
-                                       GitPullRequest, GitPullRequestChange,
+from azure.devops.released.git import (Comment, CommentPosition,
+                                       CommentThreadContext,
+                                       GitBaseVersionDescriptor, GitClient,
+                                       GitCommitDiffs, GitPullRequest,
                                        GitPullRequestCommentThread,
-                                       GitPullRequestIterationChanges,
                                        GitPullRequestSearchCriteria,
                                        GitTargetVersionDescriptor, IdentityRef,
                                        IdentityRefWithVote)
-from azure.devops.released.profile.profile_client import ProfileClient
 from msrest.authentication import BasicAuthentication
 
-from config import Config
+from config import Config, Rule
 from file_diff import FileDiff
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
@@ -62,6 +61,8 @@ class Runner:
 					rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE) # type: ignore
 			if pat := rule.get('diff_pattern'):
 				rule['diff_regex'] = re.compile(pat, re.MULTILINE)
+			if pat := rule.get('path_pattern'):
+				rule['path_regex'] = re.compile(pat)
 
 	def review_prs(self):
 		personal_access_token = self.config.get('PAT')
@@ -105,14 +106,13 @@ class Runner:
 		# TODO Try to automate getting the current user email and ID.
 		current_user = self.config['current_user']
 		user_id = self.config['user_id']
-		# FIXME Remove when done testing.
-		is_dry_run = True #config.get('is_dry_run', False)
+		is_dry_run = self.config.get('is_dry_run', False)
 
-		author: IdentityRef = pr.created_by # type: ignore
+		pr_author: IdentityRef = pr.created_by # type: ignore
 		reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
-		logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
+		logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-		file_diffs = self.get_diffs(pr, pr_url)
+		file_diffs = self.get_diffs(pr, pr_url, rules)
 
 		current_vote = None
 		reviewer: Optional[IdentityRefWithVote] = None
@@ -127,7 +127,7 @@ class Runner:
 			vote = rule.get('vote')
 			comment = rule.get('comment')
 			if (author_regex := rule.get('author_regex')) is not None:
-				if not author_regex.match(author.display_name) and not author_regex.match(author.unique_name):
+				if not author_regex.match(pr_author.display_name) and not author_regex.match(pr_author.unique_name):
 					continue
 
 			match_found = True
@@ -137,15 +137,24 @@ class Runner:
 						match_found = False
 						break
 
-			# TODO Get line for comment.
-			for file_diff in file_diffs:
-				for block in file_diff.diff['blocks']:
-					change_type = block['changeType']
-					if change_type == 0 or change_type == 2:
-						continue
-					assert change_type == 1
-						
-					lines = '\n'.join(block['mLines'])
+			if not match_found:
+				continue
+
+			if (diff_regex := rule.get('diff_regex')) is not None and comment:
+				for file_diff in file_diffs:
+					for block in file_diff.diff['blocks']:
+						change_type = block['changeType']
+						if change_type == 0 or change_type == 2 or change_type == 3:
+							continue
+						assert change_type == 1, f"Unexpected change type: {change_type}"
+						for line_num, line in enumerate(block['mLines'], start=block['mLine']):
+							if (m := diff_regex.match(line)):
+								match_found = True
+								# TODO Comment if not already commented on the line.
+								threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+								# TODO Make sure we're getting the right position because the context of the comment hides some of the content of the actual line.
+								thread_context = CommentThreadContext(file_diff.modified_path, right_file_start=CommentPosition(line_num, m.pos), right_file_end=CommentPosition(line_num, m.endpos))
+								self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context)
 			
 			if not match_found:
 				continue
@@ -155,7 +164,7 @@ class Runner:
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
 			if not pr.is_draft and vote is not None and vote < current_vote:
 				current_vote = vote
-				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
+				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 				if not is_dry_run:
 					logging.info("Setting vote: %d", vote)
 					reviewer = reviewer or IdentityRefWithVote(id=user_id)
@@ -164,16 +173,17 @@ class Runner:
 				else:
 					logging.info("Would set vote: %d", vote)
 
-			if comment is not None:
+			# Don't comment on the PR overview for an issue with a diff.
+			if comment is not None and diff_regex is None:
 				# Check to see if it's already commented in an active thread.
 				# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
 				has_comment = False
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 				has_comment = self.does_comment_exist(threads, comment)
 				if not has_comment:
-					self.send_comment(pr, pr_url, is_dry_run, author, comment, threads)
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads)
 
-	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
+	def get_diffs(self, pr: GitPullRequest, pr_url: str, rules: list[Rule]) -> list[FileDiff]:
 		result = []
 		latest_commit = pr.last_merge_source_commit
 		if latest_commit == pr_url_to_latest_commit_seen.get(pr_url):
@@ -192,19 +202,23 @@ class Runner:
 		project = self.config['project']
 		repository_id = pr.repository.id # type: ignore
 		personal_access_token: str = self.config['PAT'] # type: ignore
-		
 
 		diffs: GitCommitDiffs = self.git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
 		changes: list[dict] = diffs.changes # type: ignore
 
+		path_regexs = tuple(r for r in (rule.get('path_regex') for rule in rules) if r is not None)
+
 		for change in changes:
 			item = change['item']
 			change_type = change['changeType']
-			# TODO Make sure we handle all change types.
+			# TODO Make sure all change types are handled.
 			# TODO Figure out how to get diff for 'edit, rename'.
 			if not item.get('isFolder'):
 				original_path = item['path']
 				modified_path = change.get('sourceServerItem', original_path)
+				if not any(regex.match(modified_path) for regex in path_regexs):
+					continue
+
 				if change_type in ('add', 'edit'):
 					# Use an undocumented API.
 					# Found at https://stackoverflow.com/questions/41713616
@@ -234,9 +248,9 @@ class Runner:
 					return True
 		return result
 
-	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, author, comment: str, threads: list[GitPullRequestCommentThread]):
-		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
-		logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
+	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None):
+		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active', thread_context=thread_context)
+		logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 		if not is_dry_run:
 			logging.info("Commenting: \"%s\".", comment)
 			project = self.config['project']

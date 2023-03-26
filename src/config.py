@@ -10,6 +10,8 @@ class Rule(TypedDict):
 	description_regex: Optional[re.Pattern]
 	diff_pattern: Optional[str]
 	diff_regex: Optional[re.Pattern]
+	path_pattern: Optional[str]
+	path_regex: Optional[re.Pattern]
 	title_pattern: Optional[str]
 	title_regex: Optional[re.Pattern]
 
