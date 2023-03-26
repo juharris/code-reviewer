@@ -1,6 +1,5 @@
 import logging
 import os
-import pdb
 import re
 import sys
 import time
@@ -69,7 +68,7 @@ def review_prs(config: dict):
 	status = config.get('status', 'Active')
 	top = config.get('top', 50)
 	# TODO Remove (just for testing)
-	source_ref = None#
+	source_ref = None
 	search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref)
 	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_name, search, project, top=top)
 	for pr in prs:
@@ -98,38 +97,49 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest, pr_url: s
 	reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
 	logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
 
-	# Get the files changed.
-	pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
-	target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
-	# The branch to merge into.
-	base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
-	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
+	latest_commit = pr.last_merge_source_commit
+	if latest_commit == pr_url_to_latest_commit_seen.get(pr_url):
+		logging.debug("Skipping checking diff for commit already seen (%s).", latest_commit)
+	else:
+		pr_url_to_latest_commit_seen[pr_url] = latest_commit
+		# Get the files changed.
+		pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
+		target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
+		# The branch to merge into.
+		base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
+		base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
 
-	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
-	base_commit = diffs.base_commit
-	changes: list[dict] = diffs.changes # type: ignore
+		diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
+		base_commit = diffs.base_commit
+		changes: list[dict] = diffs.changes # type: ignore
 
-	file_diffs = []
-	for c in changes:
-		item = c['item']
-		change_type = c['changeType']
-		# TODO Handle when change_type has multiple values.
-		if not item.get('isFolder') and change_type in ('add', 'edit', 'rename'):
-			modified_path =  item['path']
-			logging.debug("Checking %s", modified_path)
-			# FIXME Get the original path for moved files.
-			original_path = item['path']
-			diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.target_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
-			diff = requests.get(diff_url, auth=('', personal_access_token)).json()
+		file_diffs = []
+		for c in changes:
+			item = c['item']
+			change_type = c['changeType']
+			# TODO Make sure we handle all change types.
+			if not item.get('isFolder') and change_type in ('add', 'edit', 'edit, rename'):
+				original_path = item['path']
+				modified_path = c.get('sourceServerItem', original_path)
+				# Use an undocumented API.
+				# Found at https://stackoverflow.com/questions/41713616
+				logging.debug("Checking %s", modified_path)
+				diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
+				diff_request = requests.get(diff_url, auth=('', personal_access_token))
+				diff_request.raise_for_status()
+				diff = diff_request.json()
 
-			for block in diff['blocks']:
-				# print(block)
-				lines = block['mLines']
-				# TODO Check for issues on the lines and comment if a rule matches.
-			# print(diff)
-
-	# pdb.set_trace()
-	# sys.exit(0)
+				for block in diff['blocks']:
+					# The type of change. 0 means no change, 1 means added, 2 means removed.
+					change_type = block['changeType']
+					if change_type == 0 or change_type == 2:
+						continue
+					assert change_type == 1
+						
+					# print(block)
+					lines = block['mLines']
+					# TODO Check for issues on the lines and comment if a rule matches.
+				# print(diff)
 	current_vote = None
 	reviewer: Optional[IdentityRefWithVote] = None
 	for reviewer in reviewers:
