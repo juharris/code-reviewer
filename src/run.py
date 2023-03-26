@@ -69,24 +69,23 @@ def review_prs(config: dict):
 	status = config.get('status', 'Active')
 	top = config.get('top', 50)
 	# TODO Remove (just for testing)
-	source_ref = None
+	source_ref = None#
 	search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref)
 	prs: Collection[GitPullRequest] = git_client.get_pull_requests(repository_name, search, project, top=top)
 	for pr in prs:
-		review_pr(config, git_client, pr)
+		pr_url = f"{organization_url}/{project}/_git/{repository_name}/pullrequest/{pr.pull_request_id}"
+		review_pr(config, git_client, pr, pr_url)
 		# TODO re-add when done testing.
 		# try:
 		# 	review_pr(config, git_client, pr)
 		# except:
-		# 	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
 		# 	logging.exception(f"Error while reviewing pull request called \"{pr.title}\" at {url}")
 
 
-def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
+def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest, pr_url: str):
 	organization_url = config['organization_url']
 	project = config['project']
 	repository_id = pr.repository.id
-	repository_name = pr.repository.name
 	rules = config['rules']
 	personal_access_token = config['PAT']
 
@@ -97,23 +96,16 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 
 	author: IdentityRef = pr.created_by # type: ignore
 	reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
-	url = f"{organization_url}/{project}/_git/{repository_id}/pullrequest/{pr.pull_request_id}"
-	logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
+	logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
 
-	# FIXME Just get the changes in the current PR.
-
-	# First we need to get the files changed.
-
-	# The following gets too many files if source branch is not up-to-date with the target branch.
-	# The PR branch
-	base_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
-	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
+	# Get the files changed.
+	pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
+	target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
 	# The branch to merge into.
-	target_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
-	# target = GitTargetVersionDescriptor(target_version=target_branch, target_version_type='branch')
-	target_commit = pr.last_merge_target_commit.commit_id # type: ignore
-	target = GitTargetVersionDescriptor(target_version=target_commit, target_version_type='commit')
-	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=False, base_version_descriptor=base, target_version_descriptor=target)
+	base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
+	base = GitBaseVersionDescriptor(base_version=base_branch, base_version_type='branch')
+
+	diffs: GitCommitDiffs = git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
 	base_commit = diffs.base_commit
 	changes: list[dict] = diffs.changes # type: ignore
 
@@ -170,7 +162,7 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 		# Only vote if the new vote is more rejective (more negative) than the current vote.
 		if not pr.is_draft and vote is not None and vote < current_vote:
 			current_vote = vote
-			logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
+			logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
 			if not is_dry_run:
 				logging.info("Setting vote: %d", vote)
 				reviewer = reviewer or IdentityRefWithVote(id=user_id)
@@ -198,7 +190,7 @@ def review_pr(config: dict, git_client: GitClient, pr: GitPullRequest):
 					break
 			if not has_comment:
 				thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active')
-				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, url)
+				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, author.display_name, author.unique_name, pr_url)
 				if not is_dry_run:
 					logging.info("Commenting: \"%s\".", comment)
 					git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
