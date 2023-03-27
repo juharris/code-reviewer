@@ -1,0 +1,26 @@
+import re
+from typing import Optional, TypedDict
+
+
+class Rule(TypedDict):
+	author_pattern: Optional[str]
+	author_regex: Optional[re.Pattern]
+	description_pattern: Optional[str]
+	description_regex: Optional[re.Pattern]
+	diff_pattern: Optional[str]
+	diff_regex: Optional[re.Pattern]
+	path_pattern: Optional[str]
+	path_regex: Optional[re.Pattern]
+	title_pattern: Optional[str]
+	title_regex: Optional[re.Pattern]
+
+class Config(TypedDict):
+	organization_url: str
+	project: str
+	repository_name: str
+	top: int
+	rules: list[Rule]
+
+	PAT: Optional[str]
+	current_user: Optional[str]
+	user_id: Optional[str]
