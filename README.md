@@ -42,6 +42,7 @@ log_level: INFO
 # If this is not set, then the script will not loop.
 wait_after_review_s: 666
 
+# Dry run: Defaults to false.
 # is_dry_run: true
 
 # Voting
