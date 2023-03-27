@@ -2,7 +2,6 @@ import re
 from typing import Optional, TypedDict
 
 
-# TODO Add more fields.
 class Rule(TypedDict):
 	author_pattern: Optional[str]
 	author_regex: Optional[re.Pattern]
@@ -15,7 +14,6 @@ class Rule(TypedDict):
 	title_pattern: Optional[str]
 	title_regex: Optional[re.Pattern]
 
-# TODO Add more fields.
 class Config(TypedDict):
 	organization_url: str
 	project: str
@@ -24,6 +22,5 @@ class Config(TypedDict):
 	rules: list[Rule]
 
 	PAT: Optional[str]
-	# TODO Try to automate getting the current user from the PAT.
 	current_user: Optional[str]
 	user_id: Optional[str]

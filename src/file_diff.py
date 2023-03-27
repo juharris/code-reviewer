@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 
 class Block(TypedDict):
@@ -7,7 +7,9 @@ class Block(TypedDict):
 	"""
 	The type of change.
 	0 means no change, 1 means added, 2 means removed.
-	3 can happen, it's unclear what is means. Maybe it's a conflict?
+	3 can happen, it's unclear what is means.
+	Maybe it's a conflict?
+	Maybe it's something that is in the target branch (e.g., main), but not pulled in the PR branch yet?
 	"""
 
 	mLines: list[str]
@@ -25,6 +27,11 @@ class Diff(TypedDict):
 
 @dataclass
 class FileDiff:
-	original_path: str
-	modified_path: str
-	diff: Diff
+	change_type: str
+	path: str
+	original_path: Optional[str] = None
+	diff: Optional[Diff] = None
+	contents: Optional[str] = None
+	"""
+	The contents when the change type is 'add'.
+	"""

@@ -81,13 +81,15 @@ class Runner:
 		connection = Connection(base_url=organization_url, creds=credentials)
 		self.git_client: GitClient = connection.clients.get_git_client()
 		# TODO Try to get the current user's email and ID, but getting auth issues:
+		# Try to get the client says "The requested resource requires user authentication: https://app.vssps.visualstudio.com/_apis".
+		# from azure.devops.released.profile.profile_client import ProfileClient
 		# profile_client: ProfileClient = connection.clients.get_profile_client()
 		# r = profile_client.get_profile('me')
 
 		status = self.config.get('status', 'Active')
 		top = self.config.get('top', 50)
-		# TODO Remove (just for testing)
-		source_ref = None
+		pr_branch = self.config.get('pr_branch')
+		source_ref = f'refs/heads/{pr_branch}' if pr_branch else None
 		search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref)
 		prs: Collection[GitPullRequest] = self.git_client.get_pull_requests(repository_name, search, project, top=top)
 		for pr in prs:
@@ -103,7 +105,6 @@ class Runner:
 		repository_id = pr.repository.id # type: ignore
 		rules = self.config['rules']
 
-		# TODO Try to automate getting the current user email and ID.
 		current_user = self.config['current_user']
 		user_id = self.config['user_id']
 		is_dry_run = self.config.get('is_dry_run', False)
@@ -114,7 +115,7 @@ class Runner:
 
 		file_diffs = self.get_diffs(pr, pr_url, rules)
 
-		current_vote = None
+		current_vote: Optional[int] = None
 		reviewer: Optional[IdentityRefWithVote] = None
 		for reviewer in reviewers:
 			if reviewer.unique_name == current_user:
@@ -124,8 +125,6 @@ class Runner:
 		threads: Optional[list[GitPullRequestCommentThread]] = None
 		for rule in rules:
 			# All checks must match.
-			vote = rule.get('vote')
-			comment = rule.get('comment')
 			if (author_regex := rule.get('author_regex')) is not None:
 				if not author_regex.match(pr_author.display_name) and not author_regex.match(pr_author.unique_name):
 					continue
@@ -140,21 +139,24 @@ class Runner:
 			if not match_found:
 				continue
 
-			if (diff_regex := rule.get('diff_regex')) is not None and comment:
+			comment = rule.get('comment')
+			diff_regex = rule.get('diff_regex')
+			if comment and diff_regex is not None:
 				for file_diff in file_diffs:
-					for block in file_diff.diff['blocks']:
-						change_type = block['changeType']
-						if change_type == 0 or change_type == 2 or change_type == 3:
-							continue
-						assert change_type == 1, f"Unexpected change type: {change_type}"
-						for line_num, line in enumerate(block['mLines'], start=block['mLine']):
-							if (m := diff_regex.match(line)):
-								match_found = True
-								# TODO Comment if not already commented on the line.
-								threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-								# TODO Make sure we're getting the right position because the context of the comment hides some of the content of the actual line.
-								thread_context = CommentThreadContext(file_diff.modified_path, right_file_start=CommentPosition(line_num, m.pos), right_file_end=CommentPosition(line_num, m.endpos))
-								self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context)
+					if file_diff.diff is not None:
+						# Handle edit.
+						for block in file_diff.diff['blocks']:
+							change_type = block['changeType']
+							if change_type == 0 or change_type == 2 or change_type == 3:
+								continue
+							assert change_type == 1, f"Unexpected change type: {change_type}"
+							for line_num, line in enumerate(block['mLines'], start=block['mLine']):
+								match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+					if file_diff.contents is not None:
+						# Handle add.
+						lines = file_diff.contents.splitlines()
+						for line_num, line in enumerate(lines, 1):
+							match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
 			
 			if not match_found:
 				continue
@@ -162,7 +164,8 @@ class Runner:
 			logging.debug("Rule matches: %s", rule)
 			# Can't vote on a draft.
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
-			if not pr.is_draft and vote is not None and vote < current_vote:
+			vote: Optional[int] = rule.get('vote')
+			if not pr.is_draft and vote is not None and (current_vote is None or vote < current_vote):
 				current_vote = vote
 				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 				if not is_dry_run:
@@ -177,11 +180,24 @@ class Runner:
 			if comment is not None and diff_regex is None:
 				# Check to see if it's already commented in an active thread.
 				# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
-				has_comment = False
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				has_comment = self.does_comment_exist(threads, comment)
-				if not has_comment:
+				if not self.does_comment_exist(threads, comment):
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads)
+
+	def handle_diff_check(self, pr, pr_url, project, is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line):
+		match_found = False
+		if (m := diff_regex.match(line)):
+			repository_id = pr.repository.id # type: ignore
+			match_found = True
+			threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			if not self.does_comment_exist(threads, comment, file_diff.path, line_num):
+				# Docs say the character indices are 0-based, but they seem to be 1-based.
+				# When 0 is given, the context of the line is hidden in the Overview.
+				thread_context = CommentThreadContext(file_diff.path, 
+					right_file_start=CommentPosition(line_num, m.pos + 1),
+					right_file_end=CommentPosition(line_num, m.endpos + 1))
+				self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context)
+		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str, rules: list[Rule]) -> list[FileDiff]:
 		result = []
@@ -213,29 +229,37 @@ class Runner:
 			change_type = change['changeType']
 			# TODO Make sure all change types are handled.
 			# TODO Figure out how to get diff for 'edit, rename'.
+			# The result for the URL was not found.
 			if not item.get('isFolder'):
 				original_path = item['path']
 				modified_path = change.get('sourceServerItem', original_path)
 				if not any(regex.match(modified_path) for regex in path_regexs):
 					continue
 
-				if change_type in ('add', 'edit'):
-					# Use an undocumented API.
-					# Found at https://stackoverflow.com/questions/41713616
-					logging.debug("Checking %s", modified_path)
-					diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
-					try:
+				try:
+					if change_type == 'edit':
+						# Use an undocumented API to get the diff.
+						# Found at https://stackoverflow.com/questions/41713616
+						logging.debug("Get diff for \"%s\".", modified_path)
+						diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
 						diff_request = requests.get(diff_url, auth=('', personal_access_token))
 						diff_request.raise_for_status()
 						diff = diff_request.json()
-						result.append(FileDiff(original_path, modified_path, diff))
-					except:
-						logging.exception("Failed to get diff for \"%s\". Change type: '%s'", modified_path, change_type)
-				else:
-					logging.debug("Skipping diff for \"%s\". Change type: '%s'", modified_path, change_type)
+						result.append(FileDiff(change_type, modified_path, original_path=original_path, diff=diff))
+					elif change_type == 'add':
+						logging.debug("Getting new file \"%s\".", modified_path)
+						url = item['url']
+						request = requests.get(url, auth=('', personal_access_token))
+						request.raise_for_status()
+						contents = request.text
+						result.append(FileDiff(change_type, modified_path, contents=contents))
+					else:
+						logging.debug("Skipping diff for \"%s\" for \"%s\". Change type: '%s'", change_type, modified_path)
+				except:
+						logging.exception("Failed to get diff for \"%s\" for \"%s\".", change_type, modified_path)
 		return result
 
-	def does_comment_exist(self, threads: list[GitPullRequestCommentThread], comment: str) -> bool:
+	def does_comment_exist(self, threads: list[GitPullRequestCommentThread], comment: str, path: Optional[str] = None, line_num: Optional[int] = None) -> bool:
 		result = False
 		assert threads is not None
 		for thread in threads:
@@ -243,6 +267,16 @@ class Runner:
 			# Look for the comment in active threads only.
 			if thread.status != 'active' and thread.status != 'unknown':
 				continue
+			if path is not None:
+				assert line_num is not None
+				if thread.thread_context is None:
+					continue
+				if thread.thread_context.file_path != path:
+					# Not the path we're looking for.
+					continue
+				# Same path.
+				if thread.thread_context.right_file_start.line != line_num:
+					continue
 			for c in comments:
 				if c.content == comment:
 					return True
