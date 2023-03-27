@@ -265,7 +265,7 @@ class Runner:
 					else:
 						self.logger.debug("Skipping diff for \"%s\" for \"%s\".", change_type, modified_path)
 				except:
-						self.logger.exception("Failed to get diff for \"%s\" for \"%s\".", change_type, modified_path)
+					self.logger.exception("Failed to get diff for \"%s\" for \"%s\".", change_type, modified_path)
 		return result
 
 	def does_comment_exist(self, threads: list[GitPullRequestCommentThread], comment: str, path: Optional[str] = None, line_num: Optional[int] = None) -> bool:
