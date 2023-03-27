@@ -199,6 +199,7 @@ class Runner:
 			repository_id = pr.repository.id # type: ignore
 			match_found = True
 			threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
 			if not self.does_comment_exist(threads, comment, file_diff.path, line_num):
 				# Docs say the character indices are 0-based, but they seem to be 1-based.
 				# When 0 is given, the context of the line is hidden in the Overview.
@@ -249,7 +250,7 @@ class Runner:
 					if change_type == 'edit':
 						# Use an undocumented API to get the diff.
 						# Found at https://stackoverflow.com/questions/41713616
-						self.logger.debug("Get diff for \"%s\".", modified_path)
+						self.logger.debug("Getting diff for \"%s\".", modified_path)
 						diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
 						diff_request = requests.get(diff_url, auth=('', personal_access_token))
 						diff_request.raise_for_status()
