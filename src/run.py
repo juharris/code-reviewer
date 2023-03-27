@@ -145,10 +145,10 @@ class Runner:
 			if not match_found:
 				continue
 
-			match_found = False
 			comment = rule.get('comment')
 			diff_regex = rule.get('diff_regex')
 			if comment and diff_regex is not None:
+				match_found = False
 				for file_diff in file_diffs:
 					if file_diff.diff is not None:
 						# Handle edit.
@@ -171,19 +171,6 @@ class Runner:
 				continue
 
 			self.logger.debug("Rule matches: %s", rule)
-			# Can't vote on a draft.
-			# Only vote if the new vote is more rejective (more negative) than the current vote.
-			vote: Optional[int] = rule.get('vote')
-			if not pr.is_draft and vote is not None and (current_vote is None or vote < current_vote):
-				current_vote = vote
-				self.logger.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
-				if not is_dry_run:
-					self.logger.info("Setting vote: %d", vote)
-					reviewer = reviewer or IdentityRefWithVote(id=user_id)
-					reviewer.vote = vote
-					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
-				else:
-					self.logger.info("Would set vote: %d", vote)
 
 			# Don't comment on the PR overview for an issue with a diff.
 			if comment is not None and diff_regex is None:
@@ -192,6 +179,19 @@ class Runner:
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 				if not self.does_comment_exist(threads, comment):
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads)
+
+			# Can't vote on a draft.
+			# Only vote if the new vote is more rejective (more negative) than the current vote.
+			vote: Optional[int] = rule.get('vote')
+			if not pr.is_draft and vote is not None and (current_vote is None or vote < current_vote):
+				current_vote = vote
+				if not is_dry_run:
+					self.logger.info("SETTING VOTE: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+					reviewer = reviewer or IdentityRefWithVote(id=user_id)
+					reviewer.vote = vote
+					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+				else:
+					self.logger.info("Would set vote: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 	def handle_diff_check(self, pr, pr_url, project, is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line):
 		match_found = False
@@ -293,14 +293,14 @@ class Runner:
 
 	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None):
 		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active', thread_context=thread_context)
-		self.logger.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 		if not is_dry_run:
-			self.logger.info("Commenting: \"%s\".", comment)
+			self.logger.info("COMMENTING: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 			project = self.config['project']
 			repository_id = pr.repository.id # type: ignore
 			self.git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
 		else:
-			self.logger.info("Would comment: \"%s\".", comment)
+			self.logger.info("Would comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
 		threads.append(thread)
 
 
