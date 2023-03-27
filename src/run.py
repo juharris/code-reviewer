@@ -33,6 +33,12 @@ class Runner:
 	config: Config
 	def __init__(self, config_path: str) -> None:
 		self.config_path = config_path
+		self.logger = logging.getLogger(__name__)
+		self.logger.setLevel(logging.INFO)
+		f = logging.Formatter('%(asctime)s [%(levelname)s] - %(name)s:%(filename)s:%(funcName)s\n%(message)s')
+		h = logging.StreamHandler()
+		h.setFormatter(f)
+		self.logger.addHandler(h)
 
 	def run(self):
 		while True:
@@ -41,7 +47,7 @@ class Runner:
 
 			wait_after_review_s = self.config.get('wait_after_review_s')
 			if wait_after_review_s is not None:
-				logging.debug("Waiting %s seconds before the next review.", wait_after_review_s)
+				self.logger.debug("Waiting %s seconds before the next review.", wait_after_review_s)
 				time.sleep(wait_after_review_s)
 			else:
 				break
@@ -52,7 +58,7 @@ class Runner:
 			self.config: Config = yaml.safe_load(f)	
 
 		log_level = logging.getLevelName(self.config.get('log_level', 'INFO'))
-		logging.basicConfig(level=log_level)
+		self.logger.setLevel(log_level)
 
 		rules = self.config['rules']
 		for rule in rules:
@@ -97,7 +103,7 @@ class Runner:
 			try:
 				self.review_pr(pr, pr_url)
 			except:
-				logging.exception(f"Error while reviewing pull request called \"{pr.title}\" at {pr_url}")
+				self.logger.exception(f"Error while reviewing pull request called \"{pr.title}\" at {pr_url}")
 
 
 	def review_pr(self, pr: GitPullRequest, pr_url: str):
@@ -111,7 +117,7 @@ class Runner:
 
 		pr_author: IdentityRef = pr.created_by # type: ignore
 		reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
-		logging.debug(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+		self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 		file_diffs = self.get_diffs(pr, pr_url, rules)
 
@@ -139,6 +145,7 @@ class Runner:
 			if not match_found:
 				continue
 
+			match_found = False
 			comment = rule.get('comment')
 			diff_regex = rule.get('diff_regex')
 			if comment and diff_regex is not None:
@@ -151,30 +158,32 @@ class Runner:
 								continue
 							assert change_type == 1, f"Unexpected change type: {change_type}"
 							for line_num, line in enumerate(block['mLines'], start=block['mLine']):
-								match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+								local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+								match_found = match_found or local_match_found
 					if file_diff.contents is not None:
 						# Handle add.
 						lines = file_diff.contents.splitlines()
 						for line_num, line in enumerate(lines, 1):
-							match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+							local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+							match_found = match_found or local_match_found
 			
 			if not match_found:
 				continue
 
-			logging.debug("Rule matches: %s", rule)
+			self.logger.debug("Rule matches: %s", rule)
 			# Can't vote on a draft.
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
 			vote: Optional[int] = rule.get('vote')
 			if not pr.is_draft and vote is not None and (current_vote is None or vote < current_vote):
 				current_vote = vote
-				logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+				self.logger.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 				if not is_dry_run:
-					logging.info("Setting vote: %d", vote)
+					self.logger.info("Setting vote: %d", vote)
 					reviewer = reviewer or IdentityRefWithVote(id=user_id)
 					reviewer.vote = vote
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 				else:
-					logging.info("Would set vote: %d", vote)
+					self.logger.info("Would set vote: %d", vote)
 
 			# Don't comment on the PR overview for an issue with a diff.
 			if comment is not None and diff_regex is None:
@@ -203,7 +212,7 @@ class Runner:
 		result = []
 		latest_commit = pr.last_merge_source_commit
 		if latest_commit == pr_url_to_latest_commit_seen.get(pr_url):
-			logging.debug("Skipping checking diff for commit already seen (%s).", latest_commit)
+			self.logger.debug("Skipping checking diff for commit already seen (%s).", latest_commit)
 			return result
 
 		# Get the files changed.
@@ -240,23 +249,23 @@ class Runner:
 					if change_type == 'edit':
 						# Use an undocumented API to get the diff.
 						# Found at https://stackoverflow.com/questions/41713616
-						logging.debug("Get diff for \"%s\".", modified_path)
+						self.logger.debug("Get diff for \"%s\".", modified_path)
 						diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
 						diff_request = requests.get(diff_url, auth=('', personal_access_token))
 						diff_request.raise_for_status()
 						diff = diff_request.json()
 						result.append(FileDiff(change_type, modified_path, original_path=original_path, diff=diff))
 					elif change_type == 'add':
-						logging.debug("Getting new file \"%s\".", modified_path)
+						self.logger.debug("Getting new file \"%s\".", modified_path)
 						url = item['url']
 						request = requests.get(url, auth=('', personal_access_token))
 						request.raise_for_status()
 						contents = request.text
 						result.append(FileDiff(change_type, modified_path, contents=contents))
 					else:
-						logging.debug("Skipping diff for \"%s\" for \"%s\". Change type: '%s'", change_type, modified_path)
+						self.logger.debug("Skipping diff for \"%s\" for \"%s\".", change_type, modified_path)
 				except:
-						logging.exception("Failed to get diff for \"%s\" for \"%s\".", change_type, modified_path)
+						self.logger.exception("Failed to get diff for \"%s\" for \"%s\".", change_type, modified_path)
 		return result
 
 	def does_comment_exist(self, threads: list[GitPullRequestCommentThread], comment: str, path: Optional[str] = None, line_num: Optional[int] = None) -> bool:
@@ -284,14 +293,14 @@ class Runner:
 
 	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None):
 		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active', thread_context=thread_context)
-		logging.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+		self.logger.info(f"\n%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 		if not is_dry_run:
-			logging.info("Commenting: \"%s\".", comment)
+			self.logger.info("Commenting: \"%s\".", comment)
 			project = self.config['project']
 			repository_id = pr.repository.id # type: ignore
 			self.git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
 		else:
-			logging.info("Would comment: \"%s\".", comment)
+			self.logger.info("Would comment: \"%s\".", comment)
 		threads.append(thread)
 
 
