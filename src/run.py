@@ -148,8 +148,11 @@ class Runner:
 			comment = rule.get('comment')
 			diff_regex = rule.get('diff_regex')
 			if comment and diff_regex is not None:
+				path_regex = rule.get('path_regex')
 				match_found = False
 				for file_diff in file_diffs:
+					if path_regex is not None and not path_regex.match(file_diff.path):
+						continue
 					if file_diff.diff is not None:
 						# Handle edit.
 						for block in file_diff.diff['blocks']:
