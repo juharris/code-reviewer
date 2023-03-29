@@ -64,9 +64,9 @@ class Runner:
 		for rule in rules:
 			for name in ('author',) + attributes_with_patterns:
 				if pat := rule.get(f'{name}_pattern'):
-					rule[f'{name}_regex'] = re.compile(pat, re.IGNORECASE) # type: ignore
+					rule[f'{name}_regex'] = re.compile(pat, re.DOTALL | re.IGNORECASE) # type: ignore
 			if pat := rule.get('diff_pattern'):
-				rule['diff_regex'] = re.compile(pat, re.MULTILINE)
+				rule['diff_regex'] = re.compile(pat, re.DOTALL)
 			if pat := rule.get('path_pattern'):
 				rule['path_regex'] = re.compile(pat)
 
