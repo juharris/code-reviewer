@@ -138,7 +138,8 @@ class Runner:
 			match_found = True
 			for name in attributes_with_patterns:
 				if (regex := rule.get(f'{name}_regex')) is not None:
-					if not regex.match(getattr(pr, name)):
+					val = getattr(pr, name)
+					if val and not regex.match(val):
 						match_found = False
 						break
 
@@ -196,7 +197,7 @@ class Runner:
 				else:
 					self.logger.info("Would set vote: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-	def handle_diff_check(self, pr, pr_url, project, is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line):
+	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads, comment: str, diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
 		if (m := diff_regex.match(line)):
 			repository_id = pr.repository.id # type: ignore
