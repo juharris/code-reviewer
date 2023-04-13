@@ -139,7 +139,7 @@ class Runner:
 			for name in attributes_with_patterns:
 				if (regex := rule.get(f'{name}_regex')) is not None:
 					val = getattr(pr, name)
-					if val and not regex.match(val):
+					if val is not None and not regex.match(val):
 						match_found = False
 						break
 
