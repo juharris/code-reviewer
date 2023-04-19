@@ -143,6 +143,10 @@ class Runner:
 						match_found = False
 						break
 
+			if rule.get('is_imperative_title_enforced'):
+				if self.is_imperative(str(pr.title)):
+					match_found = False
+
 			if not match_found:
 				continue
 
@@ -295,6 +299,27 @@ class Runner:
 				if c.content == comment:
 					return True
 		return result
+
+	def is_imperative(self, pr_title: str) -> bool:
+		# Remove tags from the beginning of the title.
+		tag_start = pr_title.find('[')
+		if tag_start != -1:
+			tag_end = pr_title.rfind(']')
+			if tag_end != -1:
+				pr_title = pr_title[tag_end + 1:].strip()
+
+		# Check if the title starts with an imperative verb.
+		first_space_index = pr_title.find(' ')
+		if first_space_index == -1:
+			first_word = pr_title
+		else:
+			first_word = pr_title[:first_space_index]
+
+		# Just use a simple check for now.
+		if first_word.endswith("ing"):
+			return False
+
+		return True
 
 	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None):
 		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active', thread_context=thread_context)
