@@ -315,8 +315,8 @@ class Runner:
 		else:
 			first_word = pr_title[:first_space_index]
 
-		# Just use a simple check for now.
-		if first_word.endswith("ing"):
+		# Just use some simple checks for now.
+		if first_word.endswith("ing") or first_word.endswith("ed"):
 			return False
 
 		return True
