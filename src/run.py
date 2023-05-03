@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import re
@@ -31,6 +32,8 @@ pr_url_to_latest_commit_seen = {}
 
 class Runner:
 	config: Config
+	config_hash: Optional[str] = None
+
 	def __init__(self, config_path: str) -> None:
 		self.config_path = config_path
 		self.logger = logging.getLogger(__name__)
@@ -53,22 +56,27 @@ class Runner:
 				break
 
 	def load_config(self):
-		print(f"Loading configuration from {self.config_path}")
 		with open(self.config_path, 'r') as f:
-			self.config: Config = yaml.safe_load(f)	
+			config_contents = f.read()
+			config_hash = hashlib.sha256(config_contents.encode('utf-8')).hexdigest()
+		if config_hash != self.config_hash:
+			print(f"Loading configuration from '{self.config_path}'.")
+			config: Config = yaml.safe_load(f)
+			self.config_hash = config_hash
 
-		log_level = logging.getLevelName(self.config.get('log_level', 'INFO'))
-		self.logger.setLevel(log_level)
+			log_level = logging.getLevelName(self.config.get('log_level', 'INFO'))
+			self.logger.setLevel(log_level)
 
-		rules = self.config['rules']
-		for rule in rules:
-			for name in ('author',) + attributes_with_patterns:
-				if pat := rule.get(f'{name}_pattern'):
-					rule[f'{name}_regex'] = re.compile(pat, re.DOTALL | re.IGNORECASE) # type: ignore
-			if pat := rule.get('diff_pattern'):
-				rule['diff_regex'] = re.compile(pat, re.DOTALL)
-			if pat := rule.get('path_pattern'):
-				rule['path_regex'] = re.compile(pat)
+			for rule in config['rules']:
+				for name in ('author',) + attributes_with_patterns:
+					if pat := rule.get(f'{name}_pattern'):
+						rule[f'{name}_regex'] = re.compile(pat, re.DOTALL | re.IGNORECASE) # type: ignore
+				if pat := rule.get('diff_pattern'):
+					rule['diff_regex'] = re.compile(pat, re.DOTALL)
+				if pat := rule.get('path_pattern'):
+					rule['path_regex'] = re.compile(pat)
+			self.config = config
+			pr_url_to_latest_commit_seen.clear()
 
 	def review_prs(self):
 		personal_access_token = self.config.get('PAT')
