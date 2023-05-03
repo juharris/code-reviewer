@@ -62,7 +62,6 @@ class Runner:
 		if config_hash != self.config_hash:
 			print(f"Loading configuration from '{self.config_path}'.")
 			config: Config = yaml.safe_load(config_contents)
-			self.config_hash = config_hash
 
 			log_level = logging.getLevelName(config.get('log_level', 'INFO'))
 			self.logger.setLevel(log_level)
@@ -76,6 +75,7 @@ class Runner:
 				if pat := rule.get('path_pattern'):
 					rule['path_regex'] = re.compile(pat)
 			self.config = config
+			self.config_hash = config_hash
 			pr_url_to_latest_commit_seen.clear()
 
 	def review_prs(self):
