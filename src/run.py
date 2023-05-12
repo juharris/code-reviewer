@@ -170,9 +170,9 @@ class Runner:
 						# Handle edit.
 						for block in file_diff.diff['blocks']:
 							change_type = block['changeType']
-							if change_type == 0 or change_type == 2 or change_type == 3:
+							if change_type == 0 or change_type == 2:
 								continue
-							assert change_type == 1, f"Unexpected change type: {change_type}"
+							assert change_type == 1 or change_type ==3, f"Unexpected change type: {change_type}"
 							for line_num, line in enumerate(block['mLines'], start=block['mLine']):
 								local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
 								match_found = match_found or local_match_found
@@ -301,6 +301,8 @@ class Runner:
 					# Not the path we're looking for.
 					continue
 				# Same path.
+				if thread.thread_context.right_file_start is None:
+					continue
 				if thread.thread_context.right_file_start.line != line_num:
 					continue
 			for c in comments:

@@ -10,6 +10,7 @@ class Block(TypedDict):
 	3 can happen, it's unclear what is means.
 	Maybe it's a conflict?
 	Maybe it's something that is in the target branch (e.g., main), but not pulled in the PR branch yet?
+	Maybe it means modified?
 	"""
 
 	mLines: list[str]
