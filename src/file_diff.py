@@ -10,7 +10,7 @@ class Block(TypedDict):
 	3 can happen, it's unclear what is means.
 	Maybe it's a conflict?
 	Maybe it's something that is in the target branch (e.g., main), but not pulled in the PR branch yet?
-	Maybe it means modified?
+	Seems like 3 does not always mean modified as sometimes it might happen if the file is not up to date with the base branch.
 	"""
 
 	mLines: list[str]
