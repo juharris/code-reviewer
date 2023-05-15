@@ -59,15 +59,12 @@ wait_after_review_s: 666
 # * description_pattern: A regex pattern that the description must match.
 # * author_pattern: A regex pattern that the author's display name or unique name (email) must match.
 # Checking files:
-# The file_pattern and diff_pattern must both be set to check for changes in files.
-# They are only used for checking new and modified lines and to write comments on those lines or vote on the pull request.
-# They cannot be used to set required reviewers yet.
 # * file_pattern: A regex pattern that the file path must match.
 # * diff_pattern: A regex pattern that a new or modified line must match.
 
 # If all of the checks in a rule match, then any actions specified will be applied.
 # Actions:
-# * comment (string): A comment to post if the rule matches.
+# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches.
 # * require (string): The ID of someone to require.
 # * vote (int): The vote to give if the rule matches.
 
@@ -96,10 +93,8 @@ rules:
     vote: -5
     comment: "Automated comment: Please use camelCase for variables and not snake_case. It's important to have consistent and easy to read code as many people contribute to and maintain this repository."
   # Require a reviewer based on the title.
-  # We cannot require reviewers based on the path yet.
   - title_pattern: '^.*\[bug fix]'
-    require: ID
-    
+    require: ID    
 ```
 
 Run the script:
