@@ -288,10 +288,13 @@ class Runner:
 					continue
 
 				try:
-					if change_type == 'edit':
+					if change_type == 'edit' or change_type == 'edit, rename':
+						if change_type == 'edit, rename':
+							original_path = change['sourceServerItem']
+							modified_path = item['path']
+						self.logger.debug("Getting diff for \"%s\".", modified_path)
 						# Use an undocumented API to get the diff.
 						# Found at https://stackoverflow.com/questions/41713616
-						self.logger.debug("Getting diff for \"%s\".", modified_path)
 						diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
 						diff_request = requests.get(diff_url, auth=('', personal_access_token))
 						diff_request.raise_for_status()
