@@ -33,8 +33,12 @@ top: 80
 # Your email associated with ADO.
 # This is used to see if you already voted on a pull request.
 current_user: {your email}
-# To get your ID, you can right click on your picture in Azure DevOps and click "Copy image link".
-user_id: {your id}
+# To get your ID,
+# Go to your profile (e.g, https://dev.azure.com/{organization}/_usersSettings/about).
+# Click on your picture to edit it.
+# Right click on the picture in the pop-up modal and "Copy image link".
+# The link should have "?id={ID}" in it.
+user_id: {your ID}
 
 log_level: INFO
 
@@ -42,8 +46,27 @@ log_level: INFO
 # If this is not set, then the script will not loop.
 wait_after_review_s: 666
 
-# Dry run: Defaults to false.
+# Dry run:
+# If true, then the script will not take actions and will just log what it would do at the INFO level.
+# Defaults to false.
 # is_dry_run: true
+
+# All checks within each rule must match for the rule to be applied.
+
+# Rules can have:
+# Checks:
+# * title_pattern: A regex pattern that the title must match.
+# * description_pattern: A regex pattern that the description must match.
+# * author_pattern: A regex pattern that the author's display name or unique name (email) must match.
+# Checking files:
+# * file_pattern: A regex pattern that the file path must match.
+# * diff_pattern: A regex pattern that a new or modified line must match.
+
+# If all of the checks in a rule match, then any actions specified will be applied.
+# Actions:
+# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches.
+# * require (string): The ID of someone to require.
+# * vote (int): The vote to give if the rule matches.
 
 # Voting
 # The script will only vote if the new vote would be more rejective than your current vote.
@@ -54,16 +77,24 @@ wait_after_review_s: 666
 # * Waiting for author: -5
 # * Reject: -10
 
-# All checks within each rule must match for the rule to be applied.
+# Examples:
 rules:
-    # If the title does not start with a tag, then vote -10.
+  # If the title does not start with a tag, then vote -10.
   - vote: -10
     title_pattern: '^(?!\[[^]]{2,}\])'
     comment: "Please add at least one tag in square brackets at the beginning of the pull request title with nothing before the tag, not even whitespace."
-    # Check the PR description.
+  # Check the PR description.
   - vote: -10
     description_pattern: '^.*DELETE THESE COMMENTS'
     comment: "Please remove the comments in the description that should be removed, as they explain. Otherwise, they will appear in email notifications and in the commit once the pull request has been merged."
+  # Check a new or modified line in a file.
+  - path_pattern: '^.*\.cs$'
+    diff_pattern: '^\s*(int|string|var) \S+_\S\S+'
+    vote: -5
+    comment: "Automated comment: Please use camelCase for variables and not snake_case. It's important to have consistent and easy to read code as many people contribute to and maintain this repository."
+  # Require a reviewer based on the title.
+  - title_pattern: '^.*\[bug fix]'
+    require: ID    
 ```
 
 Run the script:

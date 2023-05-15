@@ -14,6 +14,11 @@ class Rule(TypedDict):
 	title_pattern: Optional[str]
 	title_regex: Optional[re.Pattern]
 
+	# Actions
+	comment: Optional[str]
+	require: Optional[str]
+	vote: Optional[int]
+
 class Config(TypedDict):
 	organization_url: str
 	project: str

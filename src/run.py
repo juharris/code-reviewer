@@ -124,7 +124,7 @@ class Runner:
 		is_dry_run = self.config.get('is_dry_run', False)
 
 		pr_author: IdentityRef = pr.created_by # type: ignore
-		reviewers: Collection[IdentityRefWithVote] = pr.reviewers # type: ignore
+		reviewers: list[IdentityRefWithVote] = pr.reviewers # type: ignore
 		self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 		file_diffs = self.get_diffs(pr, pr_url, rules)
@@ -159,29 +159,35 @@ class Runner:
 				continue
 
 			comment = rule.get('comment')
+			require_id = rule.get('require')
 			diff_regex = rule.get('diff_regex')
-			if comment and diff_regex is not None:
+			if diff_regex is not None or require_id is not None:
 				path_regex = rule.get('path_regex')
 				match_found = False
 				for file_diff in file_diffs:
 					if path_regex is not None and not path_regex.match(file_diff.path):
 						continue
-					if file_diff.diff is not None:
-						# Handle edit.
-						for block in file_diff.diff['blocks']:
-							change_type = block['changeType']
-							if change_type == 0 or change_type == 2:
-								continue
-							assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
-							for line_num, line in enumerate(block['mLines'], start=block['mLine']):
+					if diff_regex is None and require_id is not None:
+						# There is a required reviewer, but we don't need to check the diff.
+						match_found = True
+						break
+					if diff_regex is not None:
+						if file_diff.diff is not None:
+							# Handle edit.
+							for block in file_diff.diff['blocks']:
+								change_type = block['changeType']
+								if change_type == 0 or change_type == 2:
+									continue
+								assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
+								for line_num, line in enumerate(block['mLines'], start=block['mLine']):
+									local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+									match_found = match_found or local_match_found
+						if file_diff.contents is not None:
+							# Handle add.
+							lines = file_diff.contents.splitlines()
+							for line_num, line in enumerate(lines, 1):
 								local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
 								match_found = match_found or local_match_found
-					if file_diff.contents is not None:
-						# Handle add.
-						lines = file_diff.contents.splitlines()
-						for line_num, line in enumerate(lines, 1):
-							local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
-							match_found = match_found or local_match_found
 			
 			if not match_found:
 				continue
@@ -196,33 +202,52 @@ class Runner:
 				if not self.does_comment_exist(threads, comment):
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads)
 
+			if require_id is not None:
+				is_already_required = False
+				for req in reviewers:
+					if req.unique_name == current_user:
+						is_already_required = req.is_required
+						req.is_required = True
+						break
+				else:
+					req = IdentityRefWithVote(is_required=True, id=require_id)
+					reviewers.append(req)
+				if not is_already_required:
+					if not is_dry_run:
+						self.logger.info("REQUIRING: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", require_id, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+						self.git_client.create_pull_request_reviewer(req, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+					else:
+						self.logger.info("Would require: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", require_id, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
 			# Can't vote on a draft.
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
 			vote: Optional[int] = rule.get('vote')
 			if not pr.is_draft and vote is not None and (current_vote is None or vote < current_vote):
-				current_vote = vote
+				if reviewer is None:
+					reviewer = IdentityRefWithVote(id=user_id)
+					reviewers.append(reviewer)
+				reviewer.vote = current_vote = vote
 				if not is_dry_run:
 					self.logger.info("SETTING VOTE: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
-					reviewer = reviewer or IdentityRefWithVote(id=user_id)
-					reviewer.vote = vote
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 				else:
 					self.logger.info("Would set vote: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads, comment: str, diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
+	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads, comment: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
 		if (m := diff_regex.match(line)):
 			repository_id = pr.repository.id # type: ignore
 			match_found = True
-			threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
-			if not self.does_comment_exist(threads, comment, file_diff.path, line_num):
-				# Docs say the character indices are 0-based, but they seem to be 1-based.
-				# When 0 is given, the context of the line is hidden in the Overview.
-				thread_context = CommentThreadContext(file_diff.path, 
-					right_file_start=CommentPosition(line_num, m.pos + 1),
-					right_file_end=CommentPosition(line_num, m.endpos + 1))
-				self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context)
+			if comment is not None:
+				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+				if not self.does_comment_exist(threads, comment, file_diff.path, line_num):
+					# Docs say the character indices are 0-based, but they seem to be 1-based.
+					# When 0 is given, the context of the line is hidden in the Overview.
+					thread_context = CommentThreadContext(file_diff.path, 
+						right_file_start=CommentPosition(line_num, m.pos + 1),
+						right_file_end=CommentPosition(line_num, m.endpos + 1))
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context)
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str, rules: list[Rule]) -> list[FileDiff]:
