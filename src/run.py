@@ -137,6 +137,11 @@ class Runner:
 				break
 
 		threads: Optional[list[GitPullRequestCommentThread]] = None
+
+		# TODO Make comments to delete configurable and support patterns.
+		# delete_comment = "Automated comment: Please add a space after `//`."
+		# threads = self.delete_comments(pr, pr_url, project, repository_id, delete_comment)
+
 		for rule in rules:
 			# All checks must match.
 			if (author_regex := rule.get('author_regex')) is not None:
@@ -233,7 +238,7 @@ class Runner:
 				else:
 					self.logger.info("Would set vote: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads, comment: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
+	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
 		if (m := diff_regex.match(line)):
 			repository_id = pr.repository.id # type: ignore
@@ -371,6 +376,24 @@ class Runner:
 			self.logger.info("Would comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 		threads.append(thread)
+
+	def delete_comments(self, pr, pr_url: str, project, repository_id, delete_comment: Optional[str]) -> Optional[list[GitPullRequestCommentThread]]:
+		if not delete_comment:
+			return None
+
+		is_dry_run = self.config.get('is_dry_run', False)
+		threads: list[GitPullRequestCommentThread] = self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+		pr_author: IdentityRef = pr.created_by # type: ignore
+		for thread in threads:
+			comments: Collection[Comment] = thread.comments # type: ignore
+			for c in comments:
+				if c.content == delete_comment:
+					if not is_dry_run:
+						self.logger.info("DELETING COMMENT: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", c.content, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+						self.git_client.delete_comment(repository_id, pr.pull_request_id, thread.id, c.id, project=project)
+					else:
+						self.logger.info("Would delete comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", c.content, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+		return threads
 
 
 def main():
