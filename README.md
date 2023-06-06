@@ -17,7 +17,6 @@ Scopes:
 * User Profile: Read
 * Pull Request Threads: Read
 
-# Run
 ## Config File
 You must create a config file.
 Example:
@@ -97,8 +96,16 @@ rules:
     require: ID    
 ```
 
+# Running
 Run the script:
 ```bash
 CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
 ```
 
+You can also use a config file from a URL (must start with "https://" or "http://"):
+```bash
+CR_ADO_PAT='YOUR PAT' python src/run.py https://mysite.com/config.yml
+```
+
+The script will reload the config file for each run.
+A run happens when the script is started and then every `wait_after_review_s` seconds.

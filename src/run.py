@@ -34,8 +34,8 @@ class Runner:
 	config: Config
 	config_hash: Optional[str] = None
 
-	def __init__(self, config_path: str) -> None:
-		self.config_path = config_path
+	def __init__(self, config_source: str) -> None:
+		self.config_source = config_source
 		self.logger = logging.getLogger(__name__)
 		self.logger.setLevel(logging.INFO)
 		f = logging.Formatter('%(asctime)s [%(levelname)s] - %(name)s:%(filename)s:%(funcName)s\n%(message)s')
@@ -56,11 +56,16 @@ class Runner:
 				break
 
 	def load_config(self):
-		with open(self.config_path, 'r') as f:
-			config_contents = f.read()
-			config_hash = hashlib.sha256(config_contents.encode('utf-8')).hexdigest()
+		if self.config_source.startswith('https://') or self.config_source.startswith('http://'):
+			r = requests.get(self.config_source)
+			r.raise_for_status()
+			config_contents = r.text
+		else:
+			with open(self.config_source, 'r') as f:
+				config_contents = f.read()
+		config_hash = hashlib.sha256(config_contents.encode('utf-8')).hexdigest()
 		if config_hash != self.config_hash:
-			print(f"Loading configuration from '{self.config_path}'.")
+			self.logger.info("Loading configuration from '%s'.", self.config_source)
 			config: Config = yaml.safe_load(config_contents)
 
 			log_level = logging.getLevelName(config.get('log_level', 'INFO'))
@@ -397,8 +402,8 @@ class Runner:
 
 
 def main():
-	config_path = sys.argv[1]
-	runner = Runner(config_path)
+	config_source = sys.argv[1]
+	runner = Runner(config_source)
 	runner.run()
 
 
