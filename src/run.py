@@ -27,7 +27,7 @@ from file_diff import FileDiff
 branch_pat = re.compile('^refs/heads/')
 
 log_start = "*" * 100
-attributes_with_patterns = ('description', 'title')
+attributes_with_patterns = ('description', 'merge_status', 'title')
 pr_url_to_latest_commit_seen = {}
 
 class Runner:

@@ -57,6 +57,8 @@ wait_after_review_s: 666
 # * title_pattern: A regex pattern that the title must match.
 # * description_pattern: A regex pattern that the description must match.
 # * author_pattern: A regex pattern that the author's display name or unique name (email) must match.
+# * merge_status_pattern: A regex pattern that the merge status must match. Some typical values are: 'conflicts', 'failure', 'queued', 'succeeded'. See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP#pullrequestasyncstatus for more information.
+
 # Checking files:
 # * file_pattern: A regex pattern that the file path must match.
 # * diff_pattern: A regex pattern that a new or modified line must match.
