@@ -29,3 +29,5 @@ class Config(TypedDict):
 	PAT: Optional[str]
 	current_user: Optional[str]
 	user_id: Optional[str]
+
+	is_stats_enabled: Optional[bool]

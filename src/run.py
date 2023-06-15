@@ -1,3 +1,4 @@
+from collections import Counter
 import hashlib
 import logging
 import os
@@ -56,13 +57,25 @@ class Runner:
 				break
 
 	def load_config(self):
+		config_contents = None
 		if self.config_source.startswith('https://') or self.config_source.startswith('http://'):
-			r = requests.get(self.config_source)
-			r.raise_for_status()
-			config_contents = r.text
+			max_num_tries = 3
+			for try_num in range(max_num_tries):
+				try:
+					r = requests.get(self.config_source)
+					r.raise_for_status()
+					config_contents = r.text
+					break
+				except:
+					if try_num == max_num_tries - 1:
+						raise
+					self.logger.exception(f"Error while downloading config from '{self.config_source}'.")
+					time.sleep(1 + try_num * 2)
 		else:
 			with open(self.config_source, 'r') as f:
 				config_contents = f.read()
+
+		assert config_contents is not None
 		config_hash = hashlib.sha256(config_contents.encode('utf-8')).hexdigest()
 		if config_hash != self.config_hash:
 			self.logger.info("Loading configuration from '%s'.", self.config_source)
@@ -82,6 +95,26 @@ class Runner:
 			self.config = config
 			self.config_hash = config_hash
 			pr_url_to_latest_commit_seen.clear()
+
+	def _make_comment_stat_key(self, comment: Comment) -> tuple:
+		author: IdentityRef = comment.author # type: ignore
+		return (author.display_name, author.unique_name, comment.comment_type)
+
+	def gather_comment_stats(self, threads: Collection[GitPullRequestCommentThread]) -> None:
+		for thread in threads:
+			comments: Collection[Comment] = thread.comments # type: ignore
+			for comment in comments:
+				if not comment.is_deleted:
+					self.comment_stats[self._make_comment_stat_key(comment)] += 1
+	
+	def display_stats(self) -> None:
+		if self.logger.level >= logging.INFO and len(self.comment_stats) > 0:
+			s = f"{log_start}\nComment stats:\nCount | Author & Comment Type\n"
+			num_top_commenters_to_show = self.config.get('num_top_commenters_to_show', 12)
+			for (name, unique_name, comment_type), count in self.comment_stats.most_common(num_top_commenters_to_show):
+				s += f"  {count: 5d} | {name} ({unique_name}) ({comment_type})\n"
+			s += log_start
+			self.logger.info(s)
 
 	def review_prs(self):
 		personal_access_token = self.config.get('PAT')
@@ -105,18 +138,22 @@ class Runner:
 		# profile_client: ProfileClient = connection.clients.get_profile_client()
 		# r = profile_client.get_profile('me')
 
-		status = self.config.get('status', 'Active')
+		status = self.config.get('status', 'active')
 		top = self.config.get('top', 50)
 		pr_branch = self.config.get('pr_branch')
 		source_ref = f'refs/heads/{pr_branch}' if pr_branch else None
 		search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref)
 		prs: Collection[GitPullRequest] = self.git_client.get_pull_requests(repository_name, search, project, top=top)
+		self.comment_stats = Counter()
 		for pr in prs:
 			pr_url = f"{organization_url}/{project}/_git/{repository_name}/pullrequest/{pr.pull_request_id}"
 			try:
 				self.review_pr(pr, pr_url)
 			except:
 				self.logger.exception(f"Error while reviewing pull request called \"{pr.title}\" at {pr_url}")
+
+		if self.config.get('is_stats_enabled'):
+			self.display_stats()
 
 
 	def review_pr(self, pr: GitPullRequest, pr_url: str):
@@ -132,8 +169,6 @@ class Runner:
 		reviewers: list[IdentityRefWithVote] = pr.reviewers # type: ignore
 		self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-		file_diffs = self.get_diffs(pr, pr_url, rules)
-
 		current_vote: Optional[int] = None
 		reviewer: Optional[IdentityRefWithVote] = None
 		for reviewer in reviewers:
@@ -143,9 +178,21 @@ class Runner:
 
 		threads: Optional[list[GitPullRequestCommentThread]] = None
 
+		if self.config.get('is_stats_enabled'):
+			threads = self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			assert threads is not None
+			self.gather_comment_stats(threads)
+
 		# TODO Make comments to delete configurable and support patterns.
 		# delete_comment = "Automated comment: Please add a space after `//`."
 		# threads = self.delete_comments(pr, pr_url, project, repository_id, delete_comment)
+
+		if pr.status == 'completed':
+			# Don't comment on pull requests that are completed because the diff cannot be computed.
+			# Probably can't vote either.
+			return
+		
+		file_diffs = self.get_diffs(pr, pr_url, rules)
 
 		for rule in rules:
 			# All checks must match.
@@ -344,7 +391,7 @@ class Runner:
 				if thread.thread_context.right_file_start.line != line_num:
 					continue
 			for c in comments:
-				if c.content == comment:
+				if c.content == comment and not c.is_deleted:
 					return True
 		return result
 

@@ -25,8 +25,16 @@ Fill in the values in `{}` with your own values.
 organization_url: 'https://dev.azure.com/{organization}'
 project: {project_name}
 repository_name: {repository_name}
+
 # The number of pull requests to check in each run.
 top: 80
+
+# The status of the pull requests to check.
+# Defaults to 'active'.
+# status can be 'abandoned', 'active', 'all', 'completed', 'notSet'
+# See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.1&tabs=HTTP#pullrequeststatus for more information.
+# Note that the script cannot comment on pull requests that are completed because the diff cannot be computed.
+status: 'active'
 
 # Eventually the script will try to figure out your email and ID automatically.
 # Your email associated with ADO.
@@ -38,6 +46,10 @@ current_user: {your email}
 # Right click on the picture in the pop-up modal and "Copy image link".
 # The link should have "?id={ID}" in it.
 user_id: {your ID}
+
+# Stats
+# If enabled, the script can gather commenters statistics.
+# is_stats_enabled: true
 
 log_level: INFO
 
