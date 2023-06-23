@@ -171,10 +171,14 @@ class Runner:
 
 		current_vote: Optional[int] = None
 		reviewer: Optional[IdentityRefWithVote] = None
-		for reviewer in reviewers:
-			if reviewer.unique_name == current_user:
-				current_vote = reviewer.vote
+		for r in reviewers:
+			if r.unique_name == current_user:
+				reviewer = r
+				current_vote = r.vote
 				break
+
+		if reviewer is None:
+			reviewer = IdentityRefWithVote(id=user_id)
 
 		threads: Optional[list[GitPullRequestCommentThread]] = None
 
