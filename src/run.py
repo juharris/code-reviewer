@@ -216,6 +216,10 @@ class Runner:
 				if self.is_imperative(str(pr.title)):
 					match_found = False
 
+			is_draft_req = rule.get('is_draft')
+			if is_draft_req is not None and is_draft_req != pr.is_draft:
+				match_found = False
+
 			if not match_found:
 				continue
 
