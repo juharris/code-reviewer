@@ -27,7 +27,15 @@ project: {project_name}
 repository_name: {repository_name}
 
 # The number of pull requests to check in each run.
-top: 80
+top: 100
+
+# The source branch of the pull requests to check.
+# By default pull requests from all branches are checked.
+# pr_branch: 'my-branch'
+
+# The target branch of the pull requests to check.
+# By default pull requests to all branches are checked.
+target_branch: 'main'
 
 # The status of the pull requests to check.
 # Defaults to 'active'.

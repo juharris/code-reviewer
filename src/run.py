@@ -141,9 +141,12 @@ class Runner:
 		status = self.config.get('status', 'active')
 		top = self.config.get('top', 50)
 		pr_branch = self.config.get('pr_branch')
+		target_branch = self.config.get('target_branch')
 		source_ref = f'refs/heads/{pr_branch}' if pr_branch else None
-		search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref)
+		target_ref = f'refs/heads/{target_branch}' if target_branch else None
+		search = GitPullRequestSearchCriteria(repository_id=repository_name, status=status, source_ref_name=source_ref, target_ref_name=target_ref)
 		prs: Collection[GitPullRequest] = self.git_client.get_pull_requests(repository_name, search, project, top=top)
+		self.logger.debug("Found %d pull request(s).", len(prs))
 		self.comment_stats = Counter()
 		for pr in prs:
 			pr_url = f"{organization_url}/{project}/_git/{repository_name}/pullrequest/{pr.pull_request_id}"
