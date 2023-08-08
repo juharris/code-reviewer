@@ -1,10 +1,11 @@
-from collections import Counter
 import hashlib
 import logging
 import os
 import re
 import sys
 import time
+import urllib.parse
+from collections import Counter
 from typing import Collection, Optional
 
 import requests
@@ -149,7 +150,7 @@ class Runner:
 		self.logger.debug("Found %d pull request(s).", len(prs))
 		self.comment_stats = Counter()
 		for pr in prs:
-			pr_url = f"{organization_url}/{project}/_git/{repository_name}/pullrequest/{pr.pull_request_id}"
+			pr_url = f"{organization_url}/{urllib.parse.quote(project)}/_git/{urllib.parse.quote(repository_name)}/pullrequest/{pr.pull_request_id}"
 			try:
 				self.review_pr(pr, pr_url)
 			except:
