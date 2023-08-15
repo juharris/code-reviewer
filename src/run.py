@@ -19,8 +19,7 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        GitPullRequestSearchCriteria,
                                        GitTargetVersionDescriptor, IdentityRef,
                                        IdentityRefWithVote,
-                                       WebApiCreateTagRequestData,
-                                       WebApiTagDefinition)
+                                       WebApiCreateTagRequestData)
 from msrest.authentication import BasicAuthentication
 
 from config import Config, Rule
