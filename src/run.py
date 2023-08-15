@@ -18,7 +18,8 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        GitPullRequestCommentThread,
                                        GitPullRequestSearchCriteria,
                                        GitTargetVersionDescriptor, IdentityRef,
-                                       IdentityRefWithVote)
+                                       IdentityRefWithVote,
+                                       WebApiCreateTagRequestData)
 from msrest.authentication import BasicAuthentication
 
 from config import Config, Rule
@@ -85,7 +86,8 @@ class Runner:
 			log_level = logging.getLevelName(config.get('log_level', 'INFO'))
 			self.logger.setLevel(log_level)
 
-			for rule in config['rules']:
+			rules = config['rules']
+			for rule in rules:
 				for name in ('author',) + attributes_with_patterns:
 					if pat := rule.get(f'{name}_pattern'):
 						rule[f'{name}_regex'] = re.compile(pat, re.DOTALL | re.IGNORECASE) # type: ignore
@@ -96,6 +98,8 @@ class Runner:
 			self.config = config
 			self.config_hash = config_hash
 			pr_url_to_latest_commit_seen.clear()
+
+			self.logger.info("Loaded configuration with %d rules.", len(rules))
 
 	def _make_comment_stat_key(self, comment: Comment) -> tuple:
 		author: IdentityRef = comment.author # type: ignore
@@ -263,6 +267,10 @@ class Runner:
 
 			self.logger.debug("Rule matches: %s", rule)
 
+			tags = rule.get('add_tags')
+			if tags is not None:
+				self.add_tags(pr, pr_url, project, is_dry_run, tags)
+
 			# Don't comment on the PR overview for an issue with a diff.
 			if comment is not None and diff_regex is None:
 				# Check to see if it's already commented in an active thread.
@@ -301,6 +309,18 @@ class Runner:
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 				else:
 					self.logger.info("Would set vote: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+
+	def add_tags(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, tags: list[str]):
+		repository_id = pr.repository.id # type: ignore
+		for tag in tags:
+			if pr.labels is None or not any(label.name == tag for label in pr.labels):
+				if not is_dry_run:
+					self.logger.info("ADDING TAG: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
+					label = WebApiCreateTagRequestData(tag)
+					self.git_client.create_pull_request_label(label, repository_id, pr.pull_request_id, project=project)
+				else:
+					self.logger.info("Would add tag: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
 
 	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False

@@ -89,6 +89,7 @@ wait_after_review_s: 666
 
 # If all of the checks in a rule match, then any actions specified will be applied.
 # Actions:
+# * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
 # * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches.
 # * require (string): The ID of someone to require.
 # * vote (int): The vote to give if the rule matches.
@@ -118,8 +119,11 @@ rules:
     vote: -5
     comment: "Automated comment: Please use camelCase for variables and not snake_case. It's important to have consistent and easy to read code as many people contribute to and maintain this repository."
   # Require a reviewer based on the title.
-  - title_pattern: '^.*\[bug fix]'
-    require: ID    
+  - title_pattern: '(?i)^.*\[bug fix]'
+    require: <ID>
+  - title_pattern: '(?i)^.*\[hot fix]'
+    add_tags:
+      - "hot fix"
 ```
 
 # Running

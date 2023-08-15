@@ -3,6 +3,7 @@ from typing import Optional, TypedDict
 
 
 class Rule(TypedDict):
+	add_tags: Optional[list[str]]
 	author_pattern: Optional[str]
 	author_regex: Optional[re.Pattern]
 	description_pattern: Optional[str]
