@@ -91,6 +91,7 @@ wait_after_review_s: 666
 # Actions:
 # * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
 # * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches. If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
+# * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
 # * require (string): The ID of someone to require.
 # * vote (int): The vote to give if the rule matches.
 
@@ -121,9 +122,16 @@ rules:
   # Require a reviewer based on the title.
   - title_pattern: '(?i)^.*\[bug fix]'
     require: <ID>
+  # Add a tag based on the title.
   - title_pattern: '(?i)^.*\[hot fix]'
     add_tags:
       - "hot fix"
+  # Add a tag and change the title based on the path of any changed files.
+  - title_pattern: '^((?!\[project]).)+$'
+    path_pattern: '^/project/'
+    new_title: '[project]{TITLE}'
+    add_tags:
+      - "project"
 ```
 
 # Running
