@@ -90,7 +90,7 @@ class Runner:
 			for rule in rules:
 				for name in ('author',) + attributes_with_patterns:
 					if pat := rule.get(f'{name}_pattern'):
-						rule[f'{name}_regex'] = re.compile(pat, re.DOTALL | re.IGNORECASE) # type: ignore
+						rule[f'{name}_regex'] = re.compile(pat, re.DOTALL) # type: ignore
 				if pat := rule.get('diff_pattern'):
 					rule['diff_regex'] = re.compile(pat, re.DOTALL)
 				if pat := rule.get('path_pattern'):
@@ -347,7 +347,6 @@ class Runner:
 			return result
 
 		# Get the files changed.
-		pr_url_to_latest_commit_seen[pr_url] = latest_commit
 		pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
 		target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
 		# The branch to merge into.
@@ -400,6 +399,8 @@ class Runner:
 						self.logger.debug("Skipping diff for \"%s\" for \"%s\".", change_type, modified_path)
 				except:
 					self.logger.exception("Failed to get diff for \"%s\" for \"%s\".", change_type, modified_path)
+
+		pr_url_to_latest_commit_seen[pr_url] = latest_commit
 		return result
 
 	def does_comment_exist(self, threads: list[GitPullRequestCommentThread], comment: str, path: Optional[str] = None, line_num: Optional[int] = None) -> bool:
