@@ -3,7 +3,7 @@ from typing import Optional, TypedDict
 
 
 class Rule(TypedDict):
-	add_tags: Optional[list[str]]
+	# Checks
 	author_pattern: Optional[str]
 	author_regex: Optional[re.Pattern]
 	description_pattern: Optional[str]
@@ -17,7 +17,9 @@ class Rule(TypedDict):
 	title_regex: Optional[re.Pattern]
 
 	# Actions
+	add_tags: Optional[list[str]]
 	comment: Optional[str]
+	new_title: Optional[str]
 	require: Optional[str]
 	vote: Optional[int]
 

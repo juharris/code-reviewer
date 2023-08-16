@@ -268,6 +268,7 @@ class Runner:
 
 			require_id = rule.get('require')
 			tags = rule.get('add_tags')
+			new_title = rule.get('new_title')
 
 			if tags is not None:
 				self.add_tags(pr, pr_url, project, is_dry_run, tags)
@@ -297,6 +298,9 @@ class Runner:
 					else:
 						self.logger.info("Would require: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", require_id, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
+			if new_title is not None:
+				self.set_new_title(pr, pr_url, project, is_dry_run, new_title)
+
 			# Can't vote on a draft.
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
 			vote: Optional[int] = rule.get('vote')
@@ -313,12 +317,12 @@ class Runner:
 
 
 	def add_tags(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, tags: list[str]):
-		repository_id = pr.repository.id # type: ignore
 		for tag in tags:
 			if pr.labels is None or not any(label.name == tag for label in pr.labels):
 				if not is_dry_run:
-					self.logger.info("ADDING TAG: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
+					repository_id = pr.repository.id # type: ignore
 					label = WebApiCreateTagRequestData(tag)
+					self.logger.info("ADDING TAG: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
 					self.git_client.create_pull_request_label(label, repository_id, pr.pull_request_id, project=project)
 				else:
 					self.logger.info("Would add tag: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
@@ -480,6 +484,16 @@ class Runner:
 					else:
 						self.logger.info("Would delete comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", c.content, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 		return threads
+
+	def set_new_title(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, new_title: str):
+		new_title = new_title.format(TITLE=pr.title)
+		if not is_dry_run:
+			repository_id = pr.repository.id # type: ignore
+			self.logger.info("SETTING TITLE TO: \"%s\" from \"%s\"\n%s", new_title, pr.title, pr_url)
+			self.git_client.update_pull_request(GitPullRequest(title=new_title), repository_id, pr.pull_request_id, project=project)
+		else:
+			self.logger.info("Would set title to: \"%s\" from \"%s\"\n%s", new_title, pr.title, pr_url)
+		pr.title = new_title
 
 
 def main():
