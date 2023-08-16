@@ -84,13 +84,13 @@ wait_after_review_s: 666
 # * is_draft: (optional) By default all pull requests are reviewed. If this is set to true, then only draft pull requests will match the rule. If this is set to false, then only published pull requests will match the rule.
 
 # Checking files:
-# * file_pattern: A regex pattern that the file path must match.
-# * diff_pattern: A regex pattern that a new or modified line must match.
+# * file_pattern: A regex pattern that a file path must match. A `diff_pattern` is not required when this is set.
+# * diff_pattern: A regex pattern that a new or the new version of a modified line must match in files matching `file_pattern`.
 
 # If all of the checks in a rule match, then any actions specified will be applied.
 # Actions:
 # * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
-# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches.
+# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches. If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
 # * require (string): The ID of someone to require.
 # * vote (int): The vote to give if the rule matches.
 

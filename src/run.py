@@ -232,19 +232,18 @@ class Runner:
 				continue
 
 			comment = rule.get('comment')
-			require_id = rule.get('require')
+			path_regex = rule.get('path_regex')
 			diff_regex = rule.get('diff_regex')
-			if diff_regex is not None or require_id is not None:
-				path_regex = rule.get('path_regex')
+			if path_regex is not None:
 				match_found = False
 				for file_diff in file_diffs:
-					if path_regex is not None and not path_regex.match(file_diff.path):
+					if not path_regex.match(file_diff.path):
 						continue
-					if diff_regex is None and require_id is not None:
-						# There is a required reviewer, but we don't need to check the diff.
+					if diff_regex is None:
+						# We don't need to check the diff.
 						match_found = True
 						break
-					if diff_regex is not None:
+					else:
 						if file_diff.diff is not None:
 							# Handle edit.
 							for block in file_diff.diff['blocks']:
@@ -261,13 +260,15 @@ class Runner:
 							for line_num, line in enumerate(lines, 1):
 								local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
 								match_found = match_found or local_match_found
-			
+
 			if not match_found:
 				continue
 
 			self.logger.debug("Rule matches: %s", rule)
 
+			require_id = rule.get('require')
 			tags = rule.get('add_tags')
+
 			if tags is not None:
 				self.add_tags(pr, pr_url, project, is_dry_run, tags)
 
