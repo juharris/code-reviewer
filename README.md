@@ -129,7 +129,7 @@ rules:
   # Add a tag and change the title based on the path of any changed files.
   - title_pattern: '^((?!\[project]).)+$'
     path_pattern: '^/project/'
-    new_title: '[project]{TITLE}'
+    new_title: "[project]{TITLE}"
     add_tags:
       - "project"
 ```
