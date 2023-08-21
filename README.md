@@ -11,6 +11,7 @@ pip install --requirement requirements.txt
 Get a PAT: https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows#create-a-pat
 
 Give the PAT the following permissions:
+
 Scopes:
 * Code: Full, Status
 * Project and Team: Read
@@ -19,8 +20,8 @@ Scopes:
 
 ## Config File
 You must create a config file.
-Example:
-Fill in the values in `{}` with your own values.
+
+Example (fill in the values in `{...}` with your own values):
 ```yaml
 organization_url: 'https://dev.azure.com/{organization}'
 project: {project_name}

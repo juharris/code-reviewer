@@ -29,6 +29,7 @@ class Config(TypedDict):
 	repository_name: str
 	top: int
 	rules: list[Rule]
+	unique_path_regexs: set[re.Pattern]
 
 	PAT: Optional[str]
 	current_user: Optional[str]

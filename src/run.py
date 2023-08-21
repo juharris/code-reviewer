@@ -46,7 +46,7 @@ class Runner:
 		h.setFormatter(f)
 		self.logger.addHandler(h)
 
-	def run(self):
+	def run(self) -> None:
 		while True:
 			self.load_config()
 			self.review_prs()
@@ -58,7 +58,7 @@ class Runner:
 			else:
 				break
 
-	def load_config(self):
+	def load_config(self) -> None:
 		config_contents = None
 		if self.config_source.startswith('https://') or self.config_source.startswith('http://'):
 			max_num_tries = 3
@@ -86,6 +86,7 @@ class Runner:
 			log_level = logging.getLevelName(config.get('log_level', 'INFO'))
 			self.logger.setLevel(log_level)
 
+			unique_path_regexs = set()
 			rules = config['rules']
 			for rule in rules:
 				for name in ('author',) + attributes_with_patterns:
@@ -94,7 +95,11 @@ class Runner:
 				if pat := rule.get('diff_pattern'):
 					rule['diff_regex'] = re.compile(pat, re.DOTALL)
 				if pat := rule.get('path_pattern'):
-					rule['path_regex'] = re.compile(pat)
+					p = rule['path_regex'] = re.compile(pat)
+					unique_path_regexs.add(p)
+
+			config['unique_path_regexs'] = unique_path_regexs
+
 			self.config = config
 			self.config_hash = config_hash
 			pr_url_to_latest_commit_seen.clear()
@@ -366,7 +371,7 @@ class Runner:
 		diffs: GitCommitDiffs = self.git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
 		changes: list[dict] = diffs.changes # type: ignore
 
-		path_regexs = tuple(r for r in (rule.get('path_regex') for rule in rules) if r is not None)
+		path_regexs = self.config['unique_path_regexs']
 
 		for change in changes:
 			item = change['item']
