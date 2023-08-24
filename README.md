@@ -1,5 +1,27 @@
 # code-reviewer
-Azure DevOps Code Reviewer
+This project allows developers to automatically review pull requests in Azure DevOps using mostly regular expression based checks and actions that can be easily customized in a YAML configuration file.
+
+## Checks
+Each rule can have regular expressions for:
+* author
+* title
+* description
+* merge status (to check if there are merge conflicts)
+* file
+* line
+
+See the documentation and examples below for more details.
+
+## Actions
+If all of the checks in a rule match, then the actions associated with the rule will run.
+Supported actions:
+* comment (on the PR or a line)
+* add tags
+* update the title
+* require someone
+* vote
+
+See the documentation and examples below for more details.
 
 # Setup
 Written using Python 3.10
