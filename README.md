@@ -129,27 +129,35 @@ wait_after_review_s: 666
 
 # Examples:
 rules:
-  # If the title does not start with a tag, then vote -10.
-  - vote: -10
-    title_pattern: '^(?!\[[^]]{2,}\])'
+  # If the title does not start with a tag, then vote to reject.
+  - title_pattern: '^(?!\[[^]]{2,}\])'
     comment: "Please add at least one tag in square brackets at the beginning of the pull request title with nothing before the tag, not even whitespace."
+    vote: -10
+
   # Check the PR description.
-  - vote: -10
-    description_pattern: '^.*DELETE THESE COMMENTS'
+  - description_pattern: '^.*DELETE THESE COMMENTS'
     comment: "Please remove the comments in the description that should be removed, as they explain. Otherwise, they will appear in email notifications and in the commit once the pull request has been merged."
-  # Check a new or modified line in a file.
+    vote: -10
+
+  # If snake_case is used in a C# file, then add a comment and vote to wait for the author.
+  # Ideally, code formatting rules would enforce this,
+  # but it's still nice point it out clearly in the PR or to automatically vote to wait so that the PR doesn't clutter your list of PRs to review.
   - path_pattern: '^.*\.cs$'
-    diff_pattern: '^\s*(int|string|var) \S+_\S\S+'
-    vote: -5
+    diff_pattern: '^\s*(int|long|string|var) \S+_\S+'
     comment: "Automated comment: Please use camelCase for variables and not snake_case. It's important to have consistent and easy to read code as many people contribute to and maintain this repository."
+    vote: -5
+
   # Require a reviewer based on the title.
   - title_pattern: '(?i)^.*\[bug fix]'
     require: <ID>
+
   # Add a tag based on the title.
   - title_pattern: '(?i)^.*\[hot fix]'
     add_tags:
       - "hot fix"
+
   # Add a tag and change the title based on the path of any changed files.
+  # "{TITLE}" will automatically be replaced by the current title.
   - title_pattern: '^((?!\[project]).)+$'
     path_pattern: '^/project/'
     new_title: "[project]{TITLE}"
