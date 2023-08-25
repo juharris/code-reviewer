@@ -134,10 +134,21 @@ rules:
     comment: "Please add at least one tag in square brackets at the beginning of the pull request title with nothing before the tag, not even whitespace."
     vote: -10
 
+  # A simple check for titles that do not use the imperative mood.
+  - title_pattern: '(?i)^.*(?:\[[^]]*]\s*)*(?:Add|Correct|Updat)(?:ed|ing)\b'
+    comment: "Automated comment: Please use the imperative mood (\"Add\" instead of \"Adding\" or \"Added\", \"Correct\" instead of \"Correcting\" or \"Corrected\", \"Update\" instead of \"Updated\" or \"Updating\") for the title of this pull request. The instructions in the PR description when the PR was created should explain this. See https://cbea.ms/git-commit for why PR and commit titles are important."
+    vote: -5
+
   # Check the PR description.
   - description_pattern: '^.*DELETE THESE COMMENTS'
     comment: "Please remove the comments in the description that should be removed, as they explain. Otherwise, they will appear in email notifications and in the commit once the pull request has been merged."
     vote: -10
+
+  # Avoid `string.IsNullOrEmpty` in C#.
+  - path_pattern: '^.*\.cs$'
+    diff_pattern: ^\s*.*\b[Ss]tring\.IsNullOrEmpty\('
+    vote: -5
+    comment: "Suggestion: only worry about `null` strings.\n\nIt's usually simpler not to worry about empty strings and just leave them be since they're usually rare. It's fine to add specific checks for `null` strings, but it's usually not worth the effort to check for empty ones and handling them in a special way. If something wants to be weird and give an empty string, then let it, good luck to it. If we are concerned about empty strings, then we should be just as concerned about strings with whitespace only and we can use `string.IsNullOrWhiteSpace(...)` instead of `string.IsNullOrEmpty(...)`."
 
   # If snake_case is used in a C# file, then add a comment and vote to wait for the author.
   # Ideally, code formatting rules would enforce this,
