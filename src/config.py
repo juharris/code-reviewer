@@ -21,7 +21,7 @@ class Rule(TypedDict):
 	comment: Optional[str]
 	new_title: Optional[str]
 	require: Optional[str]
-	vote: Optional[int]
+	vote: Optional[int | str]
 
 class Config(TypedDict):
 	organization_url: str
