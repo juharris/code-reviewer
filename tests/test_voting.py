@@ -11,3 +11,5 @@ def test_map_vote():
 	assert map_vote('reset') == 0
 	assert map_vote('approve_with_suggestions') == 5
 	assert map_vote('approve') == 10
+
+	assert map_vote('other') == None
