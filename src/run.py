@@ -12,18 +12,19 @@ import requests
 import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.git import (Comment, CommentPosition,
-                                       CommentThreadContext,
-                                       GitBaseVersionDescriptor, GitClient,
-                                       GitCommitDiffs, GitPullRequest,
-                                       GitPullRequestCommentThread,
-                                       GitPullRequestSearchCriteria,
-                                       GitTargetVersionDescriptor, IdentityRef,
-                                       IdentityRefWithVote,
-                                       WebApiCreateTagRequestData)
+									   CommentThreadContext,
+									   GitBaseVersionDescriptor, GitClient,
+									   GitCommitDiffs, GitPullRequest,
+									   GitPullRequestCommentThread,
+									   GitPullRequestSearchCriteria,
+									   GitTargetVersionDescriptor, IdentityRef,
+									   IdentityRefWithVote,
+									   WebApiCreateTagRequestData)
 from msrest.authentication import BasicAuthentication
 
 from config import Config, Rule
 from file_diff import FileDiff
+from voting import map_vote
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
 
@@ -97,6 +98,10 @@ class Runner:
 				if pat := rule.get('path_pattern'):
 					p = rule['path_regex'] = re.compile(pat)
 					unique_path_regexs.add(p)
+
+				vote = rule.get('vote')
+				if isinstance(vote, str):
+					rule['vote'] = map_vote(vote)
 
 			config['unique_path_regexs'] = unique_path_regexs
 
@@ -308,12 +313,15 @@ class Runner:
 
 			# Can't vote on a draft.
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
-			vote: Optional[int] = rule.get('vote')
+			vote = rule.get('vote')
+			# Votes were converted when the config was loaded.
+			assert vote is None or isinstance(vote, int), f"Vote must be an integer. Got: {vote} with type: {type(vote)}"
 			if not pr.is_draft and vote is not None and (current_vote is None or vote < current_vote):
 				if reviewer is None:
 					reviewer = IdentityRefWithVote(id=user_id)
 					reviewers.append(reviewer)
 				reviewer.vote = current_vote = vote
+				# TODO Map the vote int to a string when logging.
 				if not is_dry_run:
 					self.logger.info("SETTING VOTE: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
