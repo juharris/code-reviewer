@@ -18,3 +18,18 @@ def map_vote(vote: Optional[int | str]) -> Optional[int]:
 		case 'approve':
 			return 10
 	return None
+
+
+def map_int_vote(vote: int) -> str | None:
+	match vote:
+		case -10:
+			return 'REJECT'
+		case -5:
+			return 'wait'
+		case 0:
+			return 'reset'
+		case 5:
+			return 'approve_with_suggestions'
+		case 10:
+			return 'APPROVE'
+	return None
