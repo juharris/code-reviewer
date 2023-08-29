@@ -24,7 +24,7 @@ from msrest.authentication import BasicAuthentication
 
 from config import Config, Rule
 from file_diff import FileDiff
-from voting import map_vote
+from voting import map_int_vote, map_vote
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
 
@@ -321,12 +321,12 @@ class Runner:
 					reviewer = IdentityRefWithVote(id=user_id)
 					reviewers.append(reviewer)
 				reviewer.vote = current_vote = vote
-				# TODO Map the vote int to a string when logging.
+				vote_str = map_int_vote(vote)
 				if not is_dry_run:
-					self.logger.info("SETTING VOTE: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+					self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 				else:
-					self.logger.info("Would set vote: %d\nTitle: \"%s\"\nBy %s (%s)\n%s", vote, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+					self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 
 	def add_tags(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, tags: list[str]):
