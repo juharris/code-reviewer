@@ -147,7 +147,7 @@ rules:
 
   # Avoid `string.IsNullOrEmpty` in C#.
   - path_pattern: '^.*\.cs$'
-    diff_pattern: ^\s*.*\b[Ss]tring\.IsNullOrEmpty\('
+    diff_pattern: '^\s*.*\b[Ss]tring\.IsNullOrEmpty\('
     vote: wait
     comment: "Suggestion: only worry about `null` strings.\n\nIt's usually simpler not to worry about empty strings and just leave them be since they're usually rare. It's fine to add specific checks for `null` strings, but it's usually not worth the effort to check for empty ones and handling them in a special way. If something wants to be weird and give an empty string, then let it, good luck to it. If we are concerned about empty strings, then we should be just as concerned about strings with whitespace only and we can use `string.IsNullOrWhiteSpace(...)` instead of `string.IsNullOrEmpty(...)`."
 
