@@ -12,14 +12,15 @@ import requests
 import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.git import (Comment, CommentPosition,
-									   CommentThreadContext,
-									   GitBaseVersionDescriptor, GitClient,
-									   GitCommitDiffs, GitPullRequest,
-									   GitPullRequestCommentThread,
-									   GitPullRequestSearchCriteria,
-									   GitTargetVersionDescriptor, IdentityRef,
-									   IdentityRefWithVote,
-									   WebApiCreateTagRequestData)
+                                       CommentThreadContext,
+                                       GitBaseVersionDescriptor, GitClient,
+                                       GitCommitDiffs, GitPullRequest,
+                                       GitPullRequestCommentThread,
+                                       GitPullRequestSearchCriteria,
+                                       GitTargetVersionDescriptor, IdentityRef,
+                                       IdentityRefWithVote,
+                                       WebApiCreateTagRequestData)
+from azure.devops.v7_1.policy import PolicyClient
 from msrest.authentication import BasicAuthentication
 
 from config import Config, Rule
@@ -37,6 +38,8 @@ pr_url_to_latest_commit_seen = {}
 class Runner:
 	config: Config
 	config_hash: Optional[str] = None
+	git_client: GitClient
+	policy_client: PolicyClient
 
 	def __init__(self, config_source: str) -> None:
 		self.config_source = config_source
@@ -146,7 +149,8 @@ class Runner:
 		project = self.config['project']
 		repository_name = self.config['repository_name']
 		connection = Connection(base_url=organization_url, creds=credentials)
-		self.git_client: GitClient = connection.clients.get_git_client()
+		self.git_client = connection.clients.get_git_client()
+		self.policy_client = connection.clients_v7_1.get_policy_client()
 		# TODO Try to get the current user's email and ID, but getting auth issues:
 		# Try to get the client says "The requested resource requires user authentication: https://app.vssps.visualstudio.com/_apis".
 		# from azure.devops.released.profile.profile_client import ProfileClient
@@ -176,6 +180,7 @@ class Runner:
 
 	def review_pr(self, pr: GitPullRequest, pr_url: str):
 		project = self.config['project']
+		project_id = pr.repository.project.id # type: ignore
 		repository_id = pr.repository.id # type: ignore
 		rules = self.config['rules']
 
@@ -186,6 +191,10 @@ class Runner:
 		pr_author: IdentityRef = pr.created_by # type: ignore
 		reviewers: list[IdentityRefWithVote] = pr.reviewers # type: ignore
 		self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+		checks = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
+		# [c.configuration.type.display_name for c in checks]
+		# [c.status for c in checks]
 
 		current_vote: Optional[int] = None
 		reviewer: Optional[IdentityRefWithVote] = None
