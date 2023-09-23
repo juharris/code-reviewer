@@ -20,7 +20,7 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        GitTargetVersionDescriptor, IdentityRef,
                                        IdentityRefWithVote,
                                        WebApiCreateTagRequestData)
-from azure.devops.v7_1.policy import PolicyClient
+from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
 from msrest.authentication import BasicAuthentication
 
 from config import Config, Rule
@@ -192,9 +192,8 @@ class Runner:
 		reviewers: list[IdentityRefWithVote] = pr.reviewers # type: ignore
 		self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-		checks = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
-		# [c.configuration.type.display_name for c in checks]
-		# [c.status for c in checks]
+		checks: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
+		# [(c.configuration.settings.get('displayName'), c.configuration.type.display_name, c.context and c.context.get('buildDefinitionName'), c.context and c.context.get('buildOutputPreview') and (c.context.get('buildOutputPreview').get('jobName'), c.context.get('buildOutputPreview').get('taskName'), c.context.get('buildOutputPreview').get('errors')), c.status) for c in checks]
 
 		current_vote: Optional[int] = None
 		reviewer: Optional[IdentityRefWithVote] = None
