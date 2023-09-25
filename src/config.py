@@ -1,6 +1,22 @@
 import re
 from typing import Optional, TypedDict
 
+from jsonpath import JSONPath
+
+
+class JsonPathCheck(TypedDict):
+	"""
+	A generic way to check if a dictionary matches a check.
+	"""
+	json_path: str
+	json_path_: JSONPath
+	pattern: Optional[str]
+	regex: Optional[re.Pattern]
+
+
+class PolicyEvaluationChecks(TypedDict):
+	evaluation_checks: list[JsonPathCheck]
+
 
 class Rule(TypedDict):
 	# Checks
@@ -13,6 +29,7 @@ class Rule(TypedDict):
 	is_draft: Optional[bool]
 	path_pattern: Optional[str]
 	path_regex: Optional[re.Pattern]
+	policy_checks: Optional[list[PolicyEvaluationChecks]]
 	title_pattern: Optional[str]
 	title_regex: Optional[re.Pattern]
 
@@ -22,6 +39,7 @@ class Rule(TypedDict):
 	new_title: Optional[str]
 	require: Optional[str]
 	vote: Optional[int | str]
+
 
 class Config(TypedDict):
 	organization_url: str

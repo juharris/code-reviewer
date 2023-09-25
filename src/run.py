@@ -12,17 +12,19 @@ import requests
 import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.git import (Comment, CommentPosition,
-									   CommentThreadContext,
-									   GitBaseVersionDescriptor, GitClient,
-									   GitCommitDiffs, GitPullRequest,
-									   GitPullRequestCommentThread,
-									   GitPullRequestSearchCriteria,
-									   GitTargetVersionDescriptor, IdentityRef,
-									   IdentityRefWithVote,
-									   WebApiCreateTagRequestData)
+                                       CommentThreadContext,
+                                       GitBaseVersionDescriptor, GitClient,
+                                       GitCommitDiffs, GitPullRequest,
+                                       GitPullRequestCommentThread,
+                                       GitPullRequestSearchCriteria,
+                                       GitTargetVersionDescriptor, IdentityRef,
+                                       IdentityRefWithVote,
+                                       WebApiCreateTagRequestData)
+from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
+from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication
 
-from config import Config, Rule
+from config import Config, JsonPathCheck, PolicyEvaluationChecks, Rule
 from file_diff import FileDiff
 from voting import map_int_vote, map_vote
 
@@ -37,6 +39,8 @@ pr_url_to_latest_commit_seen = {}
 class Runner:
 	config: Config
 	config_hash: Optional[str] = None
+	git_client: GitClient
+	policy_client: PolicyClient
 
 	def __init__(self, config_source: str) -> None:
 		self.config_source = config_source
@@ -93,15 +97,22 @@ class Runner:
 				for name in ('author',) + attributes_with_patterns:
 					if pat := rule.get(f'{name}_pattern'):
 						rule[f'{name}_regex'] = re.compile(pat, re.DOTALL) # type: ignore
-				if pat := rule.get('diff_pattern'):
+				if (pat := rule.get('diff_pattern')) is not None:
 					rule['diff_regex'] = re.compile(pat, re.DOTALL)
-				if pat := rule.get('path_pattern'):
+				if (pat := rule.get('path_pattern')) is not None:
 					p = rule['path_regex'] = re.compile(pat)
 					unique_path_regexs.add(p)
 
 				vote = rule.get('vote')
 				if isinstance(vote, str):
 					rule['vote'] = map_vote(vote)
+
+				if (rule_policy_checks := rule.get('policy_checks')) is not None:
+					for rule_policy_check in rule_policy_checks:
+						for evaluation_check in rule_policy_check['evaluation_checks']:
+							evaluation_check['json_path_'] = JSONPath(evaluation_check['json_path'])
+							if (pat := evaluation_check.get('pattern')) is not None:
+								evaluation_check['regex'] = re.compile(pat)
 
 			config['unique_path_regexs'] = unique_path_regexs
 
@@ -146,7 +157,8 @@ class Runner:
 		project = self.config['project']
 		repository_name = self.config['repository_name']
 		connection = Connection(base_url=organization_url, creds=credentials)
-		self.git_client: GitClient = connection.clients.get_git_client()
+		self.git_client = connection.clients.get_git_client()
+		self.policy_client = connection.clients_v7_1.get_policy_client()
 		# TODO Try to get the current user's email and ID, but getting auth issues:
 		# Try to get the client says "The requested resource requires user authentication: https://app.vssps.visualstudio.com/_apis".
 		# from azure.devops.released.profile.profile_client import ProfileClient
@@ -214,6 +226,7 @@ class Runner:
 			# Probably can't vote either.
 			return
 		
+		policy_evaluations: Optional[list[dict]] = None
 		file_diffs = self.get_diffs(pr, pr_url, rules)
 
 		for rule in rules:
@@ -240,6 +253,14 @@ class Runner:
 
 			if not match_found:
 				continue
+
+			# Check policy evaluations before checking files because there are often issues when checking files.
+			rule_policy_checks = rule.get('policy_checks')
+			if rule_policy_checks is not None:
+				match_found, policy_evaluations = self.check_policies(pr, pr_url, policy_evaluations, rule_policy_checks)
+
+				if not match_found:
+					continue
 
 			comment = rule.get('comment')
 			path_regex = rule.get('path_regex')
@@ -339,6 +360,40 @@ class Runner:
 					self.git_client.create_pull_request_label(label, repository_id, pr.pull_request_id, project=project)
 				else:
 					self.logger.info("Would add tag: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
+
+	def check_policies(self, pr: GitPullRequest, pr_url: str, policy_evaluations: Optional[list[dict]], rule_policy_checks: list[PolicyEvaluationChecks]) -> tuple[bool, list[dict]]:
+		project_id = pr.repository.project.id # type: ignore
+		project = self.config['project']
+		if policy_evaluations is None:
+			policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
+			policy_evaluations = [c.as_dict() for c in policy_evaluations_]
+			self.logger.debug("Policy evaluations: %s", policy_evaluations)
+		all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
+		return all_rules_match, policy_evaluations
+
+	def is_rule_match_policy_evals(self, rule_policy_check: PolicyEvaluationChecks, policy_evaluations: list[dict]) -> bool:
+		"""
+		:returns: `True` if any of the policy evaluations match the rule.
+		"""
+		return any(self.is_policy_rule_match(rule_policy_check, policy_evaluation) for policy_evaluation in policy_evaluations)
+
+	def is_policy_rule_match(self, rule_policy_check: PolicyEvaluationChecks, policy_evaluation: dict) -> bool:
+		"""
+		:returns: `True` if the policy evaluation matches the rule.
+		"""
+		return all(self.is_check_match(check, policy_evaluation) for check in rule_policy_check['evaluation_checks'])
+
+	def is_check_match(self, check: JsonPathCheck, data: dict) -> bool:
+		"""
+		:returns: `True` if the check matches the data.
+		"""
+		matches = check['json_path_'].search(data)
+		if matches is None:
+			return False
+		self.logger.debug("JSON Path '%s' matches: %s", check['json_path'], matches)
+		if (pat := check.get('regex')) is not None:
+			return any(pat.match(m) for m in matches)
+		return len(matches) > 0
 
 	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False

@@ -1,12 +1,21 @@
 # code-reviewer
 This project allows developers to automatically review pull requests in Azure DevOps using mostly regular expression based checks and actions that can be easily customized in a YAML configuration file.
 
+## Examples:
+* Require a reviewer based on the title of a pull request.
+* Ensure that the title of a pull request matches a pattern such as starting with `[tags]`.
+* Enforce that the description of a pull request matches a pattern.
+* Block code that matches patterns that is hard to detect with static analysis tools and comment directly on matching lines.
+* Reject a pull request if it has merge conflicts.
+* Reject a pull request if the build failed.
+
 ## Checks
 Each rule can have regular expressions for:
 * author
 * title
 * description
 * merge status (to check if there are merge conflicts)
+* policy checks (check the build status using JSON Paths)
 * file
 * line
 
@@ -53,11 +62,11 @@ repository_name: {repository_name}
 top: 100
 
 # The source branch of the pull requests to check.
-# By default pull requests from all branches are checked.
+# By default, pull requests from all branches are checked.
 # pr_branch: 'my-branch'
 
 # The target branch of the pull requests to check.
-# By default pull requests to all branches are checked.
+# By default, pull requests to all branches are checked.
 target_branch: 'main'
 
 # The status of the pull requests to check.
@@ -104,7 +113,13 @@ wait_after_review_s: 666
 
 # * merge_status_pattern: A regex pattern that the merge status must match. Some typical values are: 'conflicts', 'failure', 'queued', 'succeeded'. See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP#pullrequestasyncstatus for more information.
 
-# * is_draft: (optional) By default all pull requests are reviewed. If this is set to true, then only draft pull requests will match the rule. If this is set to false, then only published pull requests will match the rule.
+# * is_draft: By default, all pull requests are reviewed. If this is set to true, then only draft pull requests will match the rule. If this is set to false, then only published pull requests will match the rule.
+
+# * policy_checks: A list of checks to run for the output of policy evaluations (build checks).
+# Every check in the `evaluation_checks` list must match the same policy evaluation for the entire rule to match.
+# Note that there can be multiple `evaluation_checks` lists in a rule so that a combination ('AND') of checks can be used to only perform actions based on the output of multiple policy evaluations.
+# See https://learn.microsoft.com/en-us/rest/api/azure/devops/policy/evaluations/list for the API output to understand what JSON Paths are possible.
+# The examples below show how to use the JSON Paths to check the build status.
 
 # Checking files:
 # * file_pattern: A regex pattern that a file path must match. A `diff_pattern` is not required when this is set.
@@ -175,6 +190,20 @@ rules:
     new_title: "[project]{TITLE}"
     add_tags:
       - "project"
+
+  # REJECT based on policy evaluations (build checks).
+  - policy_checks:
+    - evaluation_checks:
+      # See https://learn.microsoft.com/en-us/rest/api/azure/devops/policy/evaluations/list the API output for help with figuring out the JSON Paths.
+      - json_path: '$.configuration.settings.displayName'
+        pattern: '^CI Build$'
+      - json_path: '$.context.buildOutputPreview.jobName'
+        pattern: '^(Build|Job)$'
+      - json_path: '$.context.buildOutputPreview.taskName'
+        pattern: '^(Build Library|Check Code Formatting|Limit Build Warnings|Lint.*|Test)$'
+      - json_path: '$.status'
+        pattern: '^rejected$'
+    vote: REJECT
 ```
 
 # Running
