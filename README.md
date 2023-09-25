@@ -194,6 +194,7 @@ rules:
   # REJECT based on policy evaluations (build checks).
   - policy_checks:
     - evaluation_checks:
+      # See https://learn.microsoft.com/en-us/rest/api/azure/devops/policy/evaluations/list the API output for help with figuring out the JSON Paths.
       - json_path: '$.configuration.settings.displayName'
         pattern: '^CI Build$'
       - json_path: '$.context.buildOutputPreview.jobName'
