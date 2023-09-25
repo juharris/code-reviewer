@@ -1,3 +1,4 @@
 azure-devops==7.1.0b3
+jsonpath-python==1.0.6
 PyYAML==6.0
 requests==2.28.1
