@@ -36,6 +36,8 @@ log_start = "*" * 100
 attributes_with_patterns = ('description', 'merge_status', 'title')
 pr_url_to_latest_commit_seen = {}
 
+policy_display_name_path = JSONPath('$.configuration.settings.displayName')
+
 class Runner:
 	config: Config
 	config_hash: Optional[str] = None
@@ -113,6 +115,12 @@ class Runner:
 							evaluation_check['json_path_'] = JSONPath(evaluation_check['json_path'])
 							if (pat := evaluation_check.get('pattern')) is not None:
 								evaluation_check['regex'] = re.compile(pat)
+
+				if (requeue := rule.get('requeue')) is not None:
+					for check in requeue:
+						check['json_path_'] = JSONPath(check['json_path'])
+						if (pat := check.get('pattern')) is not None:
+							check['regex'] = re.compile(pat)
 
 			config['unique_path_regexs'] = unique_path_regexs
 
@@ -300,6 +308,7 @@ class Runner:
 			require_id = rule.get('require')
 			tags = rule.get('add_tags')
 			new_title = rule.get('new_title')
+			requeue = rule.get('requeue')
 
 			if tags is not None:
 				self.add_tags(pr, pr_url, project, is_dry_run, tags)
@@ -331,6 +340,13 @@ class Runner:
 
 			if new_title is not None:
 				self.set_new_title(pr, pr_url, project, is_dry_run, new_title)
+
+			if requeue is not None:
+				if policy_evaluations is None:
+					project_id = pr.repository.project.id # type: ignore
+					policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
+					policy_evaluations = [c.as_dict() for c in policy_evaluations_]
+				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, requeue)
 
 			# Can't vote on a draft.
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
@@ -562,6 +578,22 @@ class Runner:
 		else:
 			self.logger.info("Would set title to: \"%s\" from \"%s\"\n%s", new_title, pr.title, pr_url)
 		pr.title = new_title
+
+	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], requeue: list[JsonPathCheck]):
+		# Find the policy to requeue.
+		for policy_evaluation in policy_evaluations:
+			if all(self.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
+				name_matches = policy_display_name_path.search(policy_evaluation)
+				name = name_matches[0] if (name_matches is not None and len(name_matches) > 0) else None
+				evaluation_id = policy_evaluation.get('evaluation_id')
+				if evaluation_id is None:
+					self.logger.warning("Cannot requeue check for \"%s\" because no evaluation ID was found for policy evaluation: %s", name, policy_evaluation)
+					break
+				if not is_dry_run:
+					self.logger.info("REQUEUING \"%s\" (%s) for \"%s\"\n%s", name, evaluation_id, pr.title, pr_url)
+					self.policy_client.requeue_policy_evaluation(project, evaluation_id)
+				else:
+					self.logger.info("Would requeue \"%s\" (%s) for \"%s\"\n%s", name, evaluation_id, pr.title, pr_url)
 
 
 def main():
