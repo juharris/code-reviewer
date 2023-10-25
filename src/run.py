@@ -36,7 +36,7 @@ log_start = "*" * 100
 attributes_with_patterns = ('description', 'merge_status', 'title')
 pr_url_to_latest_commit_seen = {}
 
-policy_display_name_path = JSONPath('$.configuration.settings.displayName')
+POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
 
 class Runner:
 	config: Config
@@ -583,7 +583,7 @@ class Runner:
 		# Find the policy to requeue.
 		for policy_evaluation in policy_evaluations:
 			if all(self.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
-				name_matches = policy_display_name_path.search(policy_evaluation)
+				name_matches = POLICY_DISPLAY_NAME_JSONPATH.search(policy_evaluation)
 				name = name_matches[0] if (name_matches is not None and len(name_matches) > 0) else None
 				evaluation_id = policy_evaluation.get('evaluation_id')
 				if evaluation_id is None:

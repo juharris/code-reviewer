@@ -136,7 +136,7 @@ wait_after_review_s: 666
 # * vote (int): The vote to give if the rule matches.
 
 # Requeuing
-# Use a list of checks to specify the policy evaluations (build checks) to requeue.
+# Use a list of checks to specify the policy evaluation (build check) to requeue.
 # See the example below for more details.
 
 # Voting
@@ -240,7 +240,7 @@ rules:
         - json_path: '$.configuration.settings.displayName'
           pattern: '^CI Build$'
         - json_path: '$.status'
-          # Don't do rejected because important tests might have failed and could fail again.
+          # Do not requeue rejected builds because important tests might have failed and could fail again which wastes CI resources.
           # 'approved' should be it passed.
           # 'running' should mean it's already running.
           pattern: '^queued$'
