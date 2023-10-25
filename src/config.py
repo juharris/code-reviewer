@@ -38,6 +38,10 @@ class Rule(TypedDict):
 	comment: Optional[str]
 	new_title: Optional[str]
 	require: Optional[str]
+	requeue: Optional[list[JsonPathCheck]]
+	"""
+	Checks for a policy to try to re-queue.
+	"""
 	vote: Optional[int | str]
 
 

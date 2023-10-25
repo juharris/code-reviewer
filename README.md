@@ -27,6 +27,7 @@ Supported actions:
 * comment (on the PR or a line)
 * add tags
 * update the title
+* requeue
 * require someone
 * vote
 
@@ -130,8 +131,13 @@ wait_after_review_s: 666
 # * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
 # * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches. If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
 # * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
+# * requeue (list of checks): A list of checks to run for the output of policy evaluations (build checks). The policy where all checks match will be requeued.
 # * require (string): The ID of someone to require.
 # * vote (int): The vote to give if the rule matches.
+
+# Requeuing
+# Use a list of checks to specify the policy evaluation (build check) to requeue.
+# See the example below for more details.
 
 # Voting
 # Use a number or a string (case is ignored) if you want to vote when the checks match.
@@ -204,6 +210,44 @@ rules:
       - json_path: '$.status'
         pattern: '^rejected$'
     vote: REJECT
+
+  # Requeue a build if policy evaluations (build checks) pass.
+  - is_draft: false
+    # Just enable for a few authors.
+    author_pattern: '(?i)^justin '
+    policy_checks:
+      - evaluation_checks:
+        - json_path: '$.configuration.type.display_name'
+          pattern: '^Work item linking$'
+        - json_path: '$.status'
+          pattern: '^approved$'
+      - evaluation_checks:
+        - json_path: '$.configuration.type.display_name'
+          pattern: '^Required reviewers$'
+        - json_path: '$.status'
+          pattern: '^(?:approved|queued)$'
+      - evaluation_checks:
+        - json_path: '$.configuration.type.display_name'
+          pattern: '^Comment requirements$'
+        - json_path: '$.status'
+          pattern: '^approved$'
+      - evaluation_checks:
+        - json_path: '$.configuration.type.display_name'
+          pattern: '^Minimum number of reviewers$'
+        - json_path: '$.status'
+          pattern: '^approved$'
+      - evaluation_checks:
+        - json_path: '$.configuration.settings.displayName'
+          pattern: '^CI Build$'
+        - json_path: '$.status'
+          # Do not requeue rejected builds because important tests might have failed and could fail again which wastes CI resources.
+          # 'approved' should be it passed.
+          # 'running' should mean it's already running.
+          pattern: '^queued$'
+    # The check to re-queue:
+    requeue:
+      - json_path: '$.configuration.settings.displayName'
+        pattern: '^CI Build$'
 ```
 
 # Running
