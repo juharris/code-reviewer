@@ -383,7 +383,7 @@ class Runner:
 		if policy_evaluations is None:
 			policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
 			policy_evaluations = [c.as_dict() for c in policy_evaluations_]
-			self.logger.debug("Policy evaluations: %s", policy_evaluations)
+			self.logger.debug("Policy evaluations: %s\nfor %s", policy_evaluations, pr_url)
 		all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
 		return all_rules_match, policy_evaluations
 
@@ -391,7 +391,9 @@ class Runner:
 		"""
 		:returns: `True` if any of the policy evaluations match the rule.
 		"""
-		return any(self.is_policy_rule_match(rule_policy_check, policy_evaluation) for policy_evaluation in policy_evaluations)
+		result = any(self.is_policy_rule_match(rule_policy_check, policy_evaluation) for policy_evaluation in policy_evaluations)
+		self.logger.debug("Policy check %s found match: %s", rule_policy_check, result)
+		return result
 
 	def is_policy_rule_match(self, rule_policy_check: PolicyEvaluationChecks, policy_evaluation: dict) -> bool:
 		"""
@@ -404,12 +406,12 @@ class Runner:
 		:returns: `True` if the check matches the data.
 		"""
 		matches = check['json_path_'].search(data)
-		if matches is None:
+		if matches is None or len(matches) == 0:
 			return False
 		self.logger.debug("JSON Path '%s' matches: %s", check['json_path'], matches)
 		if (pat := check.get('regex')) is not None:
 			return any(pat.match(m) for m in matches)
-		return len(matches) > 0
+		return True
 
 	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
