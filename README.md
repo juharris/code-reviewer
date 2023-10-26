@@ -18,6 +18,8 @@ Each rule can have regular expressions for:
 * policy checks (check the build status using JSON Paths)
 * file
 * line
+* source branch
+* target branch
 
 See the documentation and examples below for more details.
 
@@ -116,6 +118,10 @@ wait_after_review_s: 666
 
 # * is_draft: By default, all pull requests are reviewed. If this is set to true, then only draft pull requests will match the rule. If this is set to false, then only published pull requests will match the rule.
 
+# Branch Patterns
+# * source_ref_name_pattern: A regex pattern that the source branch must match. Source branches usually start with 'refs/heads/'.
+# * target_ref_name_pattern: A regex pattern that the source branch must match. E.g., 'refs/heads/main'.
+
 # * policy_checks: A list of checks to run for the output of policy evaluations (build checks).
 # Every check in the `evaluation_checks` list must match the same policy evaluation for the entire rule to match.
 # Note that there can be multiple `evaluation_checks` lists in a rule so that a combination ('AND') of checks can be used to only perform actions based on the output of multiple policy evaluations.
@@ -197,6 +203,12 @@ rules:
     add_tags:
       - "project"
 
+  # Add a tag based on a prefix of the branch name.
+  - source_ref_name_pattern: '^refs/heads/hotfix'
+    target_ref_name_pattern: '^refs/heads/main'
+    add_tags:
+      - "hot fix"
+
   # REJECT based on policy evaluations (build checks).
   - policy_checks:
     - evaluation_checks:
@@ -214,7 +226,7 @@ rules:
   # Requeue a build if policy evaluations (build checks) pass.
   - is_draft: false
     # Just enable for a few authors.
-    author_pattern: '(?i)^justin '
+    author_pattern: '(?i)^Justin '
     policy_checks:
       - evaluation_checks:
         - json_path: '$.configuration.type.display_name'

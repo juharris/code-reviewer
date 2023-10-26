@@ -33,7 +33,7 @@ from voting import map_int_vote, map_vote
 branch_pat = re.compile('^refs/heads/')
 
 log_start = "*" * 100
-attributes_with_patterns = ('description', 'merge_status', 'title')
+attributes_with_patterns = ('description', 'merge_status', 'source_ref_name', 'target_ref_name', 'title')
 pr_url_to_latest_commit_seen = {}
 
 POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
@@ -235,7 +235,7 @@ class Runner:
 			return
 		
 		policy_evaluations: Optional[list[dict]] = None
-		file_diffs = self.get_diffs(pr, pr_url, rules)
+		file_diffs = self.get_diffs(pr, pr_url)
 
 		for rule in rules:
 			# All checks must match.
@@ -430,7 +430,7 @@ class Runner:
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context)
 		return match_found, threads
 
-	def get_diffs(self, pr: GitPullRequest, pr_url: str, rules: list[Rule]) -> list[FileDiff]:
+	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
 		result = []
 		latest_commit = pr.last_merge_source_commit
 		if latest_commit == pr_url_to_latest_commit_seen.get(pr_url):

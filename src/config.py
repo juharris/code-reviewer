@@ -30,6 +30,10 @@ class Rule(TypedDict):
 	path_pattern: Optional[str]
 	path_regex: Optional[re.Pattern]
 	policy_checks: Optional[list[PolicyEvaluationChecks]]
+	source_ref_name_pattern: Optional[str]
+	source_ref_name_regex: Optional[re.Pattern]
+	target_ref_name_pattern: Optional[str]
+	target_ref_name_regex: Optional[re.Pattern]
 	title_pattern: Optional[str]
 	title_regex: Optional[re.Pattern]
 
