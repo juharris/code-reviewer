@@ -134,11 +134,19 @@ wait_after_review_s: 666
 
 # If all of the checks in a rule match, then any actions specified will be applied.
 # Actions:
+
 # * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
+
 # * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches. If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
+
 # * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
+
 # * requeue (list of checks): A list of checks to run for the output of policy evaluations (build checks). The policy where all checks match will be requeued.
+
+# * requeue_comment (string): A comment to post on the PR when requeuing a build.
+
 # * require (string): The ID of someone to require.
+
 # * vote (int): The vote to give if the rule matches.
 
 # Requeuing
@@ -260,6 +268,7 @@ rules:
     requeue:
       - json_path: '$.configuration.settings.displayName'
         pattern: '^CI Build$'
+    requeue_comment: "Automated comment: Re-queued \"CI Build\" using https://github.com/juharris/code-reviewer."
 ```
 
 # Running

@@ -46,6 +46,10 @@ class Rule(TypedDict):
 	"""
 	Checks for a policy to try to re-queue.
 	"""
+	requeue_comment: Optional[str]
+	"""
+	Comment to post when re-queueing.
+	"""
 	vote: Optional[int | str]
 
 

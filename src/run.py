@@ -346,7 +346,10 @@ class Runner:
 					project_id = pr.repository.project.id # type: ignore
 					policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
 					policy_evaluations = [c.as_dict() for c in policy_evaluations_]
-				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, requeue)
+				requeue_comment = rule.get('requeue_comment')
+				if requeue_comment is not None:
+					threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, requeue_comment)
 
 			# Can't vote on a draft.
 			# Only vote if the new vote is more rejective (more negative) than the current vote.
@@ -543,8 +546,8 @@ class Runner:
 
 		return True
 
-	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None):
-		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status='active', thread_context=thread_context)
+	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None, status='active'):
+		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status=status, thread_context=thread_context)
 		if not is_dry_run:
 			self.logger.info("COMMENTING: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 			project = self.config['project']
@@ -583,7 +586,7 @@ class Runner:
 			self.logger.info("Would set title to: \"%s\" from \"%s\"\n%s", new_title, pr.title, pr_url)
 		pr.title = new_title
 
-	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], requeue: list[JsonPathCheck]):
+	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], requeue_comment: Optional[str]):
 		# Find the policy to requeue.
 		for policy_evaluation in policy_evaluations:
 			if all(self.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
@@ -598,6 +601,11 @@ class Runner:
 					self.policy_client.requeue_policy_evaluation(project, evaluation_id)
 				else:
 					self.logger.info("Would requeue \"%s\" (%s) for \"%s\"\n%s", name, evaluation_id, pr.title, pr_url)
+
+				if requeue_comment is not None:
+					assert threads is not None, "`threads` must be provided to add a comment."
+					pr_author: IdentityRef = pr.created_by # type: ignore
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, requeue_comment, threads, status='closed')
 
 
 def main():
