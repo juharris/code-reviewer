@@ -371,7 +371,8 @@ class Runner:
 
 	def add_tags(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, tags: list[str]):
 		for tag in tags:
-			if pr.labels is None or not any(label.name == tag for label in pr.labels):
+			normalized_tag = tag.casefold()
+			if pr.labels is None or not any(label.name.casefold() == normalized_tag for label in pr.labels):
 				if not is_dry_run:
 					repository_id = pr.repository.id # type: ignore
 					label = WebApiCreateTagRequestData(tag)
