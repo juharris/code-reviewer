@@ -128,7 +128,7 @@ class Runner:
 			self.config_hash = config_hash
 			pr_url_to_latest_commit_seen.clear()
 
-			self.logger.info("Loaded configuration with %d rules.", len(rules))
+			self.logger.info("Loaded configuration with %d rule(s).", len(rules))
 
 	def _make_comment_stat_key(self, comment: Comment) -> tuple:
 		author: IdentityRef = comment.author # type: ignore
@@ -142,7 +142,7 @@ class Runner:
 					self.comment_stats[self._make_comment_stat_key(comment)] += 1
 	
 	def display_stats(self) -> None:
-		if self.logger.level >= logging.INFO and len(self.comment_stats) > 0:
+		if self.logger.isEnabledFor(logging.INFO) and len(self.comment_stats) > 0:
 			s = f"{log_start}\nComment stats:\nCount | Author & Comment Type\n"
 			num_top_commenters_to_show = self.config.get('num_top_commenters_to_show', 12)
 			for (name, unique_name, comment_type), count in self.comment_stats.most_common(num_top_commenters_to_show):
