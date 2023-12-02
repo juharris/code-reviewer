@@ -26,7 +26,7 @@ from msrest.authentication import BasicAuthentication
 
 from config import Config, JsonPathCheck, PolicyEvaluationChecks, Rule
 from file_diff import FileDiff
-from voting import map_int_vote, map_vote
+from voting import is_vote_allowed, map_int_vote, map_vote
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
 
@@ -351,12 +351,12 @@ class Runner:
 					threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, requeue_comment)
 
-			# Can't vote on a draft.
-			# Only vote if the new vote is more rejective (more negative) than the current vote.
 			vote = rule.get('vote')
 			# Votes were converted when the config was loaded.
 			assert vote is None or isinstance(vote, int), f"Vote must be an integer. Got: {vote} with type: {type(vote)}"
-			if not pr.is_draft and vote is not None and (current_vote is None or vote < current_vote):
+			# Can't vote on a draft.
+			if not pr.is_draft and is_vote_allowed(current_vote, vote):
+				assert vote is not None
 				if reviewer is None:
 					reviewer = IdentityRefWithVote(id=user_id)
 					reviewers.append(reviewer)

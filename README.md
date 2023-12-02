@@ -1,6 +1,8 @@
 # code-reviewer
 This project allows developers to automatically review pull requests in Azure DevOps using mostly regular expression based checks and actions that can be easily customized in a YAML configuration file.
 
+The script can be configured to run in a loop and wait a certain amount of time between each run.
+
 ## Examples:
 * Require a reviewer based on the title of a pull request.
 * Ensure that the title of a pull request matches a pattern such as starting with `[tags]`.
@@ -26,11 +28,11 @@ See the documentation and examples below for more details.
 ## Actions
 If all of the checks in a rule match, then the actions associated with the rule will run.
 Supported actions:
-* comment (on the PR or a line)
+* comment (on the PR overview or a line)
 * add tags
 * update the title
-* requeue
-* require someone
+* requeue a build for a pipeline
+* require a reviewer
 * vote
 
 See the documentation and examples below for more details.
@@ -52,8 +54,8 @@ Scopes:
 * User Profile: Read
 * Pull Request Threads: Read
 
-## Config File
-You must create a config file.
+## Configuration File
+Rules are configured in a YAML file.
 
 Example (fill in the values in `{...}` with your own values):
 ```yaml
@@ -76,7 +78,7 @@ target_branch: 'main'
 # Defaults to 'active'.
 # status can be 'abandoned', 'active', 'all', 'completed', 'notSet'
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.1&tabs=HTTP#pullrequeststatus for more information.
-# Note that the script cannot comment on pull requests that are completed because the diff cannot be computed.
+# Note that the script will not comment on pull requests that are completed because the diff cannot be computed if the source branch has been deleted, which most teams do when a pull request is completed.
 status: 'active'
 
 # Eventually the script will try to figure out your email and ID automatically.
@@ -87,7 +89,7 @@ current_user: {your email}
 # Go to your profile (e.g, https://dev.azure.com/{organization}/_usersSettings/about).
 # Click on your picture to edit it.
 # Right click on the picture in the pop-up modal and "Copy image link".
-# The link should have "?id={ID}" in it.
+# The link should have "?id={your ID}" in it.
 user_id: {your ID}
 
 # Stats
@@ -155,7 +157,9 @@ wait_after_review_s: 666
 
 # Voting
 # Use a number or a string (case is ignored) if you want to vote when the checks match.
-# The script will only vote if the new vote would be more rejective than your current vote.
+# The script will only vote if the new vote would be more rejective than your current vote
+# or if your current vote is not set and the new vote is to approve or approve with suggestions.
+# This is to avoid approving if you have already voted.
 # Below are the string values (in quotes) and numbers (based on the ADO API) accepted for the `vote` action:
 # * Approve ("approve"): 10
 # * Approve with suggestions ("approve_with_suggestions"): 5
