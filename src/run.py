@@ -534,12 +534,16 @@ class Runner:
 					continue
 			for c in comments:
 				if not c.is_deleted:
-					content: str = c.content # type: ignore
-					if comment_id is not None:
-						author: IdentityRef = c.author # type: ignore
-						if author.id == current_user_id and content.endswith(comment_id_marker):
+					# Prefer finding a comment by ID and ignoring the core content because it should be simpler.
+					content: Optional[str] = c.content
+					if comment_id is not None and content is not None:
+						author: Optional[IdentityRef] = c.author
+						if author is not None and author.id == current_user_id and content.endswith(comment_id_marker):
 							return CommentSearchResult(c, thread)
-					elif content == comment:
+
+					# Even if `comment_id` is set, we still want to try to find a comment with the same core content.
+					# This can happen if an old comment now has an ID and we should update old versions of the comment to include the ID.
+					if content == comment:
 						return CommentSearchResult(c, thread)
 		return result
 

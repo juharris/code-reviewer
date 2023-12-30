@@ -146,6 +146,10 @@ wait_after_review_s: 666
 # the comment with this ID from the current user will be updated (if necessary)
 # and the thread will be reactivated (if necessary).
 # The `comment_id` is appended as a HTML comment.
+# To add a `comment_id` to an existing rule, first, do not change the `comment`.
+# Add just the `comment_id` and then run the script.
+# The script will add the `comment_id` to existing comment since the `comment` is the same.
+# Now you can change the `comment` so that the comment will be updated when the script runs again.
 
 # * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
 
