@@ -139,7 +139,13 @@ wait_after_review_s: 666
 
 # * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
 
-# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches. If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
+# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches.
+# If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
+# If `comment_id` is set, then this ID will be used to identify the comment.
+# If there is already a comment with this ID from the user, then instead of adding a new comment,
+# the comment with this ID from the current user will be updated (if necessary)
+# and the thread will be reactivated (if necessary).
+# The `comment_id` is appended as a HTML comment.
 
 # * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
 
@@ -172,11 +178,13 @@ rules:
   # If the title does not start with a tag, then vote to reject.
   - title_pattern: '^(?!\[[^]]{2,}\])'
     comment: "Please add at least one tag in square brackets at the beginning of the pull request title with nothing before the tag, not even whitespace."
+    comment_id: "title_tag"
     vote: REJECT
 
   # A simple check for titles that do not use the imperative mood.
   - title_pattern: '(?i)^.*(?:\[[^]]*]\s*)*(?:Add|Correct|Updat)(?:ed|ing)\b'
     comment: "Automated comment: Please use the imperative mood (\"Add\" instead of \"Adding\" or \"Added\", \"Correct\" instead of \"Correcting\" or \"Corrected\", \"Update\" instead of \"Updated\" or \"Updating\") for the title of this pull request. The instructions in the PR description when the PR was created should explain this. See https://cbea.ms/git-commit for why PR and commit titles are important."
+    comment_id: "title_imperative"
     vote: wait
 
   # Check the PR description.
@@ -189,6 +197,7 @@ rules:
     diff_pattern: '^\s*.*\b[Ss]tring\.IsNullOrEmpty\('
     vote: wait
     comment: "Suggestion: only worry about `null` strings.\n\nIt's usually simpler not to worry about empty strings and just leave them be since they're usually rare. It's fine to add specific checks for `null` strings, but it's usually not worth the effort to check for empty ones and handling them in a special way. If something wants to be weird and give an empty string, then let it, good luck to it. If we are concerned about empty strings, then we should be just as concerned about strings with whitespace only and we can use `string.IsNullOrWhiteSpace(...)` instead of `string.IsNullOrEmpty(...)`."
+    comment_id: "string_IsNullOrEmpty"
 
   # If snake_case is used in a C# file, then add a comment and vote to wait for the author.
   # Ideally, code formatting rules would enforce this,
@@ -196,6 +205,7 @@ rules:
   - path_pattern: '^.*\.cs$'
     diff_pattern: '^\s*(int|long|string|var) \S+_\S+'
     comment: "Automated comment: Please use camelCase for variables and not snake_case. It's important to have consistent and easy to read code as many people contribute to and maintain this repository."
+    comment_id: "snake_case"
     vote: wait
 
   # Require a reviewer based on the title.

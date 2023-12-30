@@ -19,7 +19,7 @@ class PolicyEvaluationChecks(TypedDict):
 
 
 class Rule(TypedDict):
-	# Checks
+	# Checks (in alphabetical order)
 	author_pattern: Optional[str]
 	author_regex: Optional[re.Pattern]
 	description_pattern: Optional[str]
@@ -37,9 +37,28 @@ class Rule(TypedDict):
 	title_pattern: Optional[str]
 	title_regex: Optional[re.Pattern]
 
-	# Actions
+	# Actions (in alphabetical order)
 	add_tags: Optional[list[str]]
+	"""
+	Tags to add to the pull request.
+	"""
+
 	comment: Optional[str]
+	"""
+	The comment to post on the pull request or the the line if `diff_pattern` is set.
+	"""
+
+	comment_id: Optional[str]
+	"""
+	An ID to use to identify the comment.
+	A comment ID is appended as a HTML comment within the comment.
+	If this is set, then before posting a new comment,
+	there will be a search for a comment with this ID by the current user.
+	If a comment is found,
+	then the thread with this comment will be reactivated (if necessary)
+	and the comment will be edited (if necessary).
+	"""
+
 	new_title: Optional[str]
 	require: Optional[str]
 	requeue: Optional[list[JsonPathCheck]]
