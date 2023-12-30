@@ -323,9 +323,8 @@ class Runner:
 				existing_comment_info = self.find_comment(threads, comment, comment_id)
 				if existing_comment_info is None:
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, comment_id=comment_id)
-				elif comment_id is not None:
+				else:
 					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
-				# else the comment is already there without an ID and it is active.
 
 			if require_id is not None:
 				is_already_required = False
@@ -439,9 +438,8 @@ class Runner:
 						right_file_start=CommentPosition(line_num, m.pos + 1),
 						right_file_end=CommentPosition(line_num, m.endpos + 1))
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context, comment_id=comment_id)
-				elif comment_id is not None:
+				else:
 					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
-				# else the comment is already there without an ID and it is active.
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
@@ -517,9 +515,7 @@ class Runner:
 		assert threads is not None
 		for thread in threads:
 			comments: Collection[Comment] = thread.comments # type: ignore
-			# Look for the comment in active threads only, unless we're looking for an existing comment with an ID.
-			if comment_id is None and thread.status != 'active' and thread.status != 'unknown':
-				continue
+			# We could filter by `thread.status` (can be 'active', 'unknown', ...), but we want to find resolved threads too and reactivate them, if necessary.
 			if path is not None:
 				assert line_num is not None
 				if thread.thread_context is None:
@@ -584,7 +580,7 @@ class Runner:
 
 		threads.append(thread)
 
-	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, comment_id: str, existing_comment_info: CommentSearchResult, status='active'):
+	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, comment_id: Optional[str], existing_comment_info: CommentSearchResult, status='active'):
 		thread: GitPullRequestCommentThread = existing_comment_info.thread
 		existing_comment: Comment = existing_comment_info.comment
 
@@ -599,7 +595,8 @@ class Runner:
 			else:
 				self.logger.info("Would update thread status: \"%s\"for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-		comment += get_comment_id_marker(comment_id)
+		if comment_id is not None:
+			comment += get_comment_id_marker(comment_id)
 		if existing_comment.content != comment:
 			existing_comment.content = comment
 			if not is_dry_run:
