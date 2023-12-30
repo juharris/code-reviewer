@@ -83,7 +83,7 @@ class Runner:
 					self.logger.exception(f"Error while downloading config from '{self.config_source}'.")
 					time.sleep(1 + try_num * 2)
 		else:
-			with open(self.config_source, 'r') as f:
+			with open(self.config_source, 'r', encoding='utf-8') as f:
 				config_contents = f.read()
 
 		assert config_contents is not None
