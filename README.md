@@ -4,7 +4,7 @@ This project allows developers to automatically review pull requests in Azure De
 The script can be configured to run in a loop and wait a certain amount of time between each run.
 
 ## Examples:
-* Block code that matches patterns that is hard to detect with static analysis tools and comment directly on matching lines.
+* Block code that matches patterns that are hard to check with static analysis tools and comment directly on matching lines.
 * Reactivate a comment thread if the code matches a pattern.
 * Require a reviewer based on the title of a pull request.
 * Ensure that the title of a pull request matches a pattern such as starting with `[tags]`.
@@ -145,15 +145,15 @@ wait_after_review_s: 666
 # If the comment already exists, then the comment will not be added again.
 # If the thread with the comment is inactive, then the thread will be reactivated.
 # If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
+# A `comment_id` (string) property is recommended if you want to change the text of the comment instead of adding a new comment in the future.
 # If `comment_id` is set, then this ID will be used to identify the comment.
-# Using a `comment_id` is recommended if you want to change the text of the comment instead of adding a new comment in the future.
 # If there is already a comment with this ID from the user, then instead of adding a new comment,
 # the comment with this ID from the current user will be updated (if necessary)
 # and the thread will be reactivated (if necessary).
 # The `comment_id` is appended as a HTML comment.
 # To add a `comment_id` to an existing rule, first, do not change the `comment`.
 # Add just the `comment_id` and then run the script.
-# The script will add the `comment_id` to existing comment since the `comment` is the same.
+# The script will add the `comment_id` to existing comments since the `comment` is the same.
 # Now you can change the `comment` so that the comment will be updated when the script runs again.
 
 # * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
