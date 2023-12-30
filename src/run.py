@@ -326,6 +326,7 @@ class Runner:
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, comment_id=comment_id)
 				elif comment_id is not None:
 					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
+				# else the comment is already there without an ID and it is active.
 
 			if require_id is not None:
 				is_already_required = False
@@ -441,6 +442,7 @@ class Runner:
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context, comment_id=comment_id)
 				elif comment_id is not None:
 					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
+				# else the comment is already there without an ID and it is active.
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
@@ -534,12 +536,12 @@ class Runner:
 			for c in comments:
 				if not c.is_deleted:
 					content: str = c.content # type: ignore
-					if content == comment:
-						return CommentSearchResult(c, thread)
 					if comment_id is not None:
 						author: IdentityRef = c.author # type: ignore
 						if author.id == current_user_id and content.endswith(comment_id_marker):
 							return CommentSearchResult(c, thread)
+					elif content == comment:
+						return CommentSearchResult(c, thread)
 		return result
 
 	def is_imperative(self, pr_title: str) -> bool:
@@ -589,7 +591,7 @@ class Runner:
 				self.logger.info("CHANGING THREAD STATUS: \"%s\" for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 				project = self.config['project']
 				repository_id = pr.repository.id # type: ignore
-				thread_ = GitPullRequestCommentThread(status=status, id=thread.id)
+				thread_ = GitPullRequestCommentThread(status=status)
 				self.git_client.update_thread(thread_, repository_id, pr.pull_request_id, thread.id, project=project)
 			else:
 				self.logger.info("Would update thread status: \"%s\"for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
@@ -601,7 +603,7 @@ class Runner:
 				self.logger.info("UPDATING COMMENT: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 				project = self.config['project']
 				repository_id = pr.repository.id # type: ignore
-				comment_ = Comment(content=comment, id=existing_comment.id)
+				comment_ = Comment(content=comment)
 				self.git_client.update_comment(comment_, repository_id, pr.pull_request_id, thread.id, existing_comment.id, project=project)
 			else:
 				self.logger.info("Would update comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)

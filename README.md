@@ -139,8 +139,13 @@ wait_after_review_s: 666
 
 # * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
 
-# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches. If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
-# If `comment_id` is set, then this ID will be used to identify a version of the comment from the current user. Instead of adding a new comment, the comment will be updated if it already exists and the thread will be reactivated if necessary. The comment ID is added as a HTML comment within the comment.
+# * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches.
+# If `diff_pattern` is set, then the comment will be on lines that match `diff_pattern`.
+# If `comment_id` is set, then this ID will be used to identify the comment.
+# If there is already a comment with this ID from the user, then instead of adding a new comment,
+# the comment with this ID from the current user will be updated (if necessary)
+# and the thread will be reactivated (if necessary).
+# The `comment_id` is append as a HTML comment.
 
 # * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
 
