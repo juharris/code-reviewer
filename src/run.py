@@ -6,6 +6,7 @@ import sys
 import time
 import urllib.parse
 from collections import Counter
+from dataclasses import dataclass
 from typing import Collection, Optional
 
 import requests
@@ -24,7 +25,8 @@ from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
 from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication
 
-from config import Config, JsonPathCheck, PolicyEvaluationChecks, Rule
+from comment_search import CommentSearchResult, get_comment_id_marker
+from config import Config, JsonPathCheck, PolicyEvaluationChecks
 from file_diff import FileDiff
 from voting import is_vote_allowed, map_int_vote, map_vote
 
@@ -37,6 +39,7 @@ attributes_with_patterns = ('description', 'merge_status', 'source_ref_name', 't
 pr_url_to_latest_commit_seen = {}
 
 POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
+
 
 class Runner:
 	config: Config
@@ -271,6 +274,7 @@ class Runner:
 					continue
 
 			comment = rule.get('comment')
+			comment_id = rule.get('comment_id')
 			path_regex = rule.get('path_regex')
 			diff_regex = rule.get('diff_regex')
 			if path_regex is not None:
@@ -291,13 +295,13 @@ class Runner:
 									continue
 								assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
 								for line_num, line in enumerate(block['mLines'], start=block['mLine']):
-									local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+									local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
 									match_found = match_found or local_match_found
 						if file_diff.contents is not None:
 							# Handle add.
 							lines = file_diff.contents.splitlines()
 							for line_num, line in enumerate(lines, 1):
-								local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, diff_regex, file_diff, line_num, line)
+								local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
 								match_found = match_found or local_match_found
 
 			if not match_found:
@@ -318,7 +322,7 @@ class Runner:
 				# Check to see if it's already commented in an active thread.
 				# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				if not self.does_comment_exist(threads, comment):
+				if not self.find_comment(threads, comment, comment_id):
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads)
 
 			if require_id is not None:
@@ -417,7 +421,7 @@ class Runner:
 			return any(pat.match(m) for m in matches)
 		return True
 
-	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
+	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
 		if (m := diff_regex.match(line)):
 			repository_id = pr.repository.id # type: ignore
@@ -425,7 +429,7 @@ class Runner:
 			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
 			if comment is not None:
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				if not self.does_comment_exist(threads, comment, file_diff.path, line_num):
+				if not self.find_comment(threads, comment, comment_id, file_diff.path, line_num):
 					# Docs say the character indices are 0-based, but they seem to be 1-based.
 					# When 0 is given, the context of the line is hidden in the Overview.
 					thread_context = CommentThreadContext(file_diff.path, 
@@ -500,8 +504,10 @@ class Runner:
 		pr_url_to_latest_commit_seen[pr_url] = latest_commit
 		return result
 
-	def does_comment_exist(self, threads: list[GitPullRequestCommentThread], comment: str, path: Optional[str] = None, line_num: Optional[int] = None) -> bool:
-		result = False
+	def find_comment(self, threads: list[GitPullRequestCommentThread], comment: str, comment_id: Optional[str] = None, path: Optional[str] = None, line_num: Optional[int] = None) -> Optional[CommentSearchResult]:
+		result = None
+		current_user_id = self.config['user_id']
+		comment_id_marker = get_comment_id_marker(comment_id)
 		assert threads is not None
 		for thread in threads:
 			comments: Collection[Comment] = thread.comments # type: ignore
@@ -521,8 +527,12 @@ class Runner:
 				if thread.thread_context.right_file_start.line != line_num:
 					continue
 			for c in comments:
-				if c.content == comment and not c.is_deleted:
-					return True
+				if not c.is_deleted:
+					if c.content == comment:
+						return CommentSearchResult(c, thread)
+					if comment_id is not None:
+						if c.author.id == current_user_id and c.content.endswith(comment_id_marker):
+							return CommentSearchResult(c, thread)
 		return result
 
 	def is_imperative(self, pr_title: str) -> bool:
@@ -554,6 +564,7 @@ class Runner:
 			project = self.config['project']
 			repository_id = pr.repository.id # type: ignore
 			self.git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
+			self.git_client.update_thread()
 		else:
 			self.logger.info("Would comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
