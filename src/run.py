@@ -318,7 +318,6 @@ class Runner:
 
 			# Don't comment on the PR overview for an issue with a diff.
 			if comment is not None and diff_regex is None:
-				# Check to see if it's already commented in an active thread.
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 				existing_comment_info = self.find_comment(threads, comment, comment_id)
 				if existing_comment_info is None:
