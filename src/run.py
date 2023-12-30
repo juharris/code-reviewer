@@ -320,14 +320,12 @@ class Runner:
 			# Don't comment on the PR overview for an issue with a diff.
 			if comment is not None and diff_regex is None:
 				# Check to see if it's already commented in an active thread.
-				# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				existing_comment = self.find_comment(threads, comment, comment_id)
-				if existing_comment is None:
+				existing_comment_info = self.find_comment(threads, comment, comment_id)
+				if existing_comment_info is None:
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, comment_id=comment_id)
-				else:
-					# TODO Update comment.
-					pass
+				elif comment_id is not None:
+					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
 
 			if require_id is not None:
 				is_already_required = False
@@ -433,17 +431,16 @@ class Runner:
 			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
 			if comment is not None:
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				existing_comment = self.find_comment(threads, comment, comment_id, file_diff.path, line_num)
-				if existing_comment is None:
+				existing_comment_info = self.find_comment(threads, comment, comment_id, file_diff.path, line_num)
+				if existing_comment_info is None:
 					# Docs say the character indices are 0-based, but they seem to be 1-based.
 					# When 0 is given, the context of the line is hidden in the Overview.
 					thread_context = CommentThreadContext(file_diff.path, 
 						right_file_start=CommentPosition(line_num, m.pos + 1),
 						right_file_end=CommentPosition(line_num, m.endpos + 1))
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context, comment_id=comment_id)
-				else:
-					# TODO Update comment.
-					pass
+				elif comment_id is not None:
+					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
@@ -519,8 +516,8 @@ class Runner:
 		assert threads is not None
 		for thread in threads:
 			comments: Collection[Comment] = thread.comments # type: ignore
-			# Look for the comment in active threads only.
-			if thread.status != 'active' and thread.status != 'unknown':
+			# Look for the comment in active threads only, unless we're looking for an existing comment with an ID.
+			if comment_id is None and thread.status != 'active' and thread.status != 'unknown':
 				continue
 			if path is not None:
 				assert line_num is not None
@@ -581,6 +578,34 @@ class Runner:
 			self.logger.info("Would comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 		threads.append(thread)
+
+	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, comment_id: str, existing_comment_info: CommentSearchResult, status='active'):
+		thread: GitPullRequestCommentThread = existing_comment_info.thread
+		existing_comment: Comment = existing_comment_info.comment
+
+		if thread.status != status:
+			thread.status = status
+			if not is_dry_run:
+				self.logger.info("CHANGING THREAD STATUS: \"%s\" for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+				project = self.config['project']
+				repository_id = pr.repository.id # type: ignore
+				thread_ = GitPullRequestCommentThread(status=status, id=thread.id)
+				self.git_client.update_thread(thread_, repository_id, pr.pull_request_id, thread.id, project=project)
+			else:
+				self.logger.info("Would update thread status: \"%s\"for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+		comment += get_comment_id_marker(comment_id)
+		if existing_comment.content != comment:
+			existing_comment.content = comment
+			if not is_dry_run:
+				self.logger.info("UPDATING COMMENT: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+				project = self.config['project']
+				repository_id = pr.repository.id # type: ignore
+				comment_ = Comment(content=comment, id=existing_comment.id)
+				self.git_client.update_comment(comment_, repository_id, pr.pull_request_id, thread.id, existing_comment.id, project=project)
+			else:
+				self.logger.info("Would update comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
 
 	def delete_comments(self, pr, pr_url: str, project, repository_id, delete_comment: Optional[str]) -> Optional[list[GitPullRequestCommentThread]]:
 		if not delete_comment:
