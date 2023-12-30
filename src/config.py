@@ -51,7 +51,7 @@ class Rule(TypedDict):
 	comment_id: Optional[str]
 	"""
 	An ID to use to identify the comment.
-	A comment ID is added as a HTML comment within the comment.
+	A comment ID is appended as a HTML comment within the comment.
 	If this is set, then before posting a new comment,
 	there will be a search for a comment with this ID by the current user.
 	If a comment is found,

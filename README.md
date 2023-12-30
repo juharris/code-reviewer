@@ -145,7 +145,7 @@ wait_after_review_s: 666
 # If there is already a comment with this ID from the user, then instead of adding a new comment,
 # the comment with this ID from the current user will be updated (if necessary)
 # and the thread will be reactivated (if necessary).
-# The `comment_id` is append as a HTML comment.
+# The `comment_id` is appended as a HTML comment.
 
 # * new_title (string): A new title to set on the pull request. Use "{TITLE}" as a placeholder for the current title.
 

@@ -6,7 +6,6 @@ import sys
 import time
 import urllib.parse
 from collections import Counter
-from dataclasses import dataclass
 from typing import Collection, Optional
 
 import requests
