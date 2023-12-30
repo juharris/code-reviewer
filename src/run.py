@@ -322,8 +322,12 @@ class Runner:
 				# Check to see if it's already commented in an active thread.
 				# Eventually we could try to find the thread with the comment and reactivate the thread, and/or reply again.
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				if not self.find_comment(threads, comment, comment_id):
-					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads)
+				existing_comment = self.find_comment(threads, comment, comment_id)
+				if existing_comment is None:
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, comment_id=comment_id)
+				else:
+					# TODO Update comment.
+					pass
 
 			if require_id is not None:
 				is_already_required = False
@@ -429,13 +433,17 @@ class Runner:
 			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
 			if comment is not None:
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				if not self.find_comment(threads, comment, comment_id, file_diff.path, line_num):
+				existing_comment = self.find_comment(threads, comment, comment_id, file_diff.path, line_num)
+				if existing_comment is None:
 					# Docs say the character indices are 0-based, but they seem to be 1-based.
 					# When 0 is given, the context of the line is hidden in the Overview.
 					thread_context = CommentThreadContext(file_diff.path, 
 						right_file_start=CommentPosition(line_num, m.pos + 1),
 						right_file_end=CommentPosition(line_num, m.endpos + 1))
-					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context)
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context, comment_id=comment_id)
+				else:
+					# TODO Update comment.
+					pass
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
@@ -528,10 +536,12 @@ class Runner:
 					continue
 			for c in comments:
 				if not c.is_deleted:
-					if c.content == comment:
+					content: str = c.content # type: ignore
+					if content == comment:
 						return CommentSearchResult(c, thread)
 					if comment_id is not None:
-						if c.author.id == current_user_id and c.content.endswith(comment_id_marker):
+						author: IdentityRef = c.author # type: ignore
+						if author.id == current_user_id and content.endswith(comment_id_marker):
 							return CommentSearchResult(c, thread)
 		return result
 
@@ -557,14 +567,16 @@ class Runner:
 
 		return True
 
-	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None, status='active'):
-		thread = GitPullRequestCommentThread(comments=[Comment(content=comment)], status=status, thread_context=thread_context)
+	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None, status='active', comment_id: Optional[str] = None):
+		if comment_id is not None:
+			comment += get_comment_id_marker(comment_id)
+		comment_ = Comment(content=comment)
+		thread = GitPullRequestCommentThread(comments=[comment_], status=status, thread_context=thread_context)
 		if not is_dry_run:
 			self.logger.info("COMMENTING: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 			project = self.config['project']
 			repository_id = pr.repository.id # type: ignore
 			self.git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
-			self.git_client.update_thread()
 		else:
 			self.logger.info("Would comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
