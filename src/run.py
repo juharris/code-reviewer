@@ -57,8 +57,11 @@ class Runner:
 
 	def run(self) -> None:
 		while True:
-			self.load_config()
-			self.review_prs()
+			try:
+				self.load_config()
+				self.review_prs()
+			except:
+				self.logger.exception(f"Error while trying to load the config or get pull requests to review.")
 
 			wait_after_review_s = self.config.get('wait_after_review_s')
 			if wait_after_review_s is not None:
