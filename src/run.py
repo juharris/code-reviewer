@@ -21,8 +21,9 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        IdentityRefWithVote,
                                        WebApiCreateTagRequestData)
 from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
+from azure.identity import ManagedIdentityCredential
 from jsonpath import JSONPath
-from msrest.authentication import BasicAuthentication
+from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
 from config import Config, JsonPathCheck, PolicyEvaluationChecks
@@ -38,6 +39,9 @@ attributes_with_patterns = ('description', 'merge_status', 'source_ref_name', 't
 pr_url_to_latest_commit_seen = {}
 
 POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
+
+# App ID of the Azure DevOps REST API itself (not of a specific org or project)
+ADO_REST_API_AUTH_SCOPE = '499b84ac-1321-427f-aa17-267ca6975798/.default'
 
 
 class Runner:
@@ -161,10 +165,19 @@ class Runner:
 			personal_access_token = os.environ.get('CR_ADO_PAT')
 			self.config['PAT'] = personal_access_token
 
-		if not personal_access_token:
-			raise ValueError("No personal access token provided. Please set the CR_ADO_PAT environment variable or add set 'PAT' the config file.")
+		if personal_access_token:
+			credentials = BasicAuthentication('', personal_access_token)
 
-		credentials = BasicAuthentication('', personal_access_token)
+		else:
+			managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
+			if managed_identity_client_id:
+				managed_identity_credential = ManagedIdentityCredential(client_id=managed_identity_client_id)
+				token = managed_identity_credential.get_token(ADO_REST_API_AUTH_SCOPE)
+				token_dict = {'access_token': token.token, 'expires_in': token.expires_on}
+				credentials = OAuthTokenAuthentication(managed_identity_client_id, token_dict)
+
+			else:
+				raise ValueError("No personal access token and no managed identity client ID provided. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT' in the config file.")
 
 		organization_url = self.config['organization_url']
 		project = self.config['project']
