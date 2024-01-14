@@ -310,6 +310,7 @@ class Runner:
 
 			self.logger.debug("Rule matches: %s", rule)
 
+			optional_reviewers = rule.get('add_optional_reviewers')
 			required_reviewers = rule.get('require')
 			tags = rule.get('add_tags')
 			new_title = rule.get('new_title')
@@ -327,8 +328,11 @@ class Runner:
 				else:
 					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
 
+			if optional_reviewers is not None:
+				self.add_optional_reviewers(pr, pr_url, project, pr_author, is_dry_run, reviewers, optional_reviewers)
+
 			if required_reviewers is not None:
-				self.make_required(pr, pr_url, project, pr_author, is_dry_run, reviewers, required_reviewers)
+				self.add_required_reviewers(pr, pr_url, project, pr_author, is_dry_run, reviewers, required_reviewers)
 
 			if new_title is not None:
 				self.set_new_title(pr, pr_url, project, is_dry_run, new_title)
@@ -356,6 +360,46 @@ class Runner:
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 				else:
 					self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+	def add_optional_reviewers(self, pr: GitPullRequest, pr_url: str, project: str, pr_author: IdentityRef, is_dry_run: bool, reviewers: list[IdentityRefWithVote], optional_reviewers: Collection[str]):
+		for optional_reviewer in optional_reviewers:
+			is_already_optional = False
+			for req in reviewers:
+				if req.id == optional_reviewer:
+					is_already_optional = not req.has_declined
+					break
+			else:
+				req = IdentityRefWithVote(id=optional_reviewer)
+				reviewers.append(req)
+			if not is_already_optional:
+				if not is_dry_run:
+					self.logger.info("ADDING OPTIONAL REVIEWER: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", optional_reviewer, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+					repository_id = pr.repository.id # type: ignore
+					self.git_client.create_pull_request_reviewer(req, repository_id, pr.pull_request_id, reviewer_id=optional_reviewer, project=project)
+				else:
+					self.logger.info("Would add optional reviewer: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", optional_reviewer, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+	def add_required_reviewers(self, pr: GitPullRequest, pr_url: str, project: str, pr_author: IdentityRef, is_dry_run: bool, reviewers: list[IdentityRefWithVote], required_reviewers: str | Collection[str]):
+		if isinstance(required_reviewers, str):
+			required_reviewers = (required_reviewers, )
+
+		for required_reviewer in required_reviewers:
+			is_already_required = False
+			for req in reviewers:
+				if req.id == required_reviewer:
+					is_already_required = req.is_required
+					req.is_required = True
+					break
+			else:
+				req = IdentityRefWithVote(is_required=True, id=required_reviewer)
+				reviewers.append(req)
+			if not is_already_required:
+				if not is_dry_run:
+					self.logger.info("REQUIRING: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", required_reviewer, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+					repository_id = pr.repository.id # type: ignore
+					self.git_client.create_pull_request_reviewer(req, repository_id, pr.pull_request_id, reviewer_id=required_reviewer, project=project)
+				else:
+					self.logger.info("Would require: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", required_reviewer, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 	def add_tags(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, tags: list[str]):
 		for tag in tags:
@@ -548,28 +592,6 @@ class Runner:
 
 		return True
 
-	def make_required(self, pr: GitPullRequest, pr_url: str, project: str, pr_author: IdentityRef, is_dry_run: bool, reviewers: list[IdentityRefWithVote], required_reviewers: str | Collection[str]):
-		if isinstance(required_reviewers, str):
-			required_reviewers = (required_reviewers, )
-
-		for required_reviewer in required_reviewers:
-			is_already_required = False
-			for req in reviewers:
-				if req.id == required_reviewer:
-					is_already_required = req.is_required
-					req.is_required = True
-					break
-			else:
-				req = IdentityRefWithVote(is_required=True, id=required_reviewer)
-				reviewers.append(req)
-			if not is_already_required:
-				if not is_dry_run:
-					self.logger.info("REQUIRING: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", required_reviewer, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
-					repository_id = pr.repository.id # type: ignore
-					self.git_client.create_pull_request_reviewer(req, repository_id, pr.pull_request_id, reviewer_id=required_reviewer, project=project)
-				else:
-					self.logger.info("Would require: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", required_reviewer, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
-
 	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None, status='active', comment_id: Optional[str] = None):
 		if comment_id is not None:
 			comment += get_comment_id_marker(comment_id)
@@ -598,7 +620,7 @@ class Runner:
 				thread_ = GitPullRequestCommentThread(status=status)
 				self.git_client.update_thread(thread_, repository_id, pr.pull_request_id, thread.id, project=project)
 			else:
-				self.logger.info("Would update thread status: \"%s\"for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+				self.logger.info("Would update thread status: \"%s\" for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 		if comment_id is not None:
 			comment += get_comment_id_marker(comment_id)

@@ -38,6 +38,7 @@ class Rule(TypedDict):
 	title_regex: Optional[re.Pattern]
 
 	# Actions (in alphabetical order)
+	add_optional_reviewers: Optional[list[str]]
 	add_tags: Optional[list[str]]
 	"""
 	Tags to add to the pull request.
@@ -60,7 +61,7 @@ class Rule(TypedDict):
 	"""
 
 	new_title: Optional[str]
-	require: Optional[str | Collection[str]]
+	require: Optional[str | list[str]]
 	requeue: Optional[list[JsonPathCheck]]
 	"""
 	Checks for a policy to try to re-queue.
