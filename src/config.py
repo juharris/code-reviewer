@@ -1,5 +1,5 @@
 import re
-from typing import Optional, TypedDict
+from typing import Collection, Optional, TypedDict
 
 from jsonpath import JSONPath
 
@@ -60,7 +60,7 @@ class Rule(TypedDict):
 	"""
 
 	new_title: Optional[str]
-	require: Optional[str]
+	require: Optional[str | Collection[str]]
 	requeue: Optional[list[JsonPathCheck]]
 	"""
 	Checks for a policy to try to re-queue.

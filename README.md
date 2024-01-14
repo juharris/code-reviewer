@@ -83,10 +83,8 @@ target_branch: 'main'
 # Note that the script will not comment on pull requests that are completed because the diff cannot be computed if the source branch has been deleted, which most teams do when a pull request is completed.
 status: 'active'
 
-# Eventually the script will try to figure out your email and ID automatically.
-# Your email associated with ADO.
+# Your user ID.
 # This is used to see if you already voted on a pull request.
-current_user: {your email}
 # To get your ID,
 # Go to your profile (e.g, https://dev.azure.com/{organization}/_usersSettings/about).
 # Click on your picture to edit it.
@@ -162,7 +160,7 @@ wait_after_review_s: 666
 
 # * requeue_comment (string): A comment to post on the PR when requeuing a build.
 
-# * require (string): The ID of someone to require.
+# * require (string or list[string]): The ID of someone to require or IDs of people to require.
 
 # * vote (int): The vote to give if the rule matches.
 
