@@ -7,6 +7,7 @@ The script can be configured to run in a loop and wait a certain amount of time 
 * Block code that matches patterns that are hard to check with static analysis tools and comment directly on matching lines.
 * Reactivate a comment thread if the code matches a pattern.
 * Require a reviewer based on the title of a pull request.
+* Add a team as an optional reviewer based on the author of a pull request.
 * Ensure that the title of a pull request matches a pattern such as starting with `[tags]`.
 * Enforce that the description of a pull request matches a pattern.
 * Reject a pull request if it has merge conflicts.
@@ -31,10 +32,11 @@ See the documentation and examples below for more details.
 If all of the checks in a rule match, then the actions associated with the rule will run.
 Supported actions:
 * comment (on the PR overview or a line)
+* add optional reviewers
 * add tags
 * update the title
 * requeue a build for a pipeline
-* require a reviewer
+* require reviewers
 * vote
 
 See the documentation and examples below for more details.
@@ -83,10 +85,8 @@ target_branch: 'main'
 # Note that the script will not comment on pull requests that are completed because the diff cannot be computed if the source branch has been deleted, which most teams do when a pull request is completed.
 status: 'active'
 
-# Eventually the script will try to figure out your email and ID automatically.
-# Your email associated with ADO.
+# Your user ID.
 # This is used to see if you already voted on a pull request.
-current_user: {your email}
 # To get your ID,
 # Go to your profile (e.g, https://dev.azure.com/{organization}/_usersSettings/about).
 # Click on your picture to edit it.
@@ -139,6 +139,8 @@ wait_after_review_s: 666
 # If all of the checks in a rule match, then any actions specified will be applied.
 # Actions:
 
+# * add_optional_reviewers (list of IDs): IDs of people or teams to add as optional reviewers.
+
 # * add_tags (list of strings): Tags (AKA labels) to add to the pull request.
 
 # * comment (string): A comment to post on the PR or a line in a diff depending on how the rule matches.
@@ -162,7 +164,7 @@ wait_after_review_s: 666
 
 # * requeue_comment (string): A comment to post on the PR when requeuing a build.
 
-# * require (string): The ID of someone to require.
+# * require (string or list[string]): The ID of someone or a team to require. A list of IDs is also supported.
 
 # * vote (int): The vote to give if the rule matches.
 
