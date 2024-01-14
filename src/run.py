@@ -530,7 +530,7 @@ class Runner:
 					else:
 						self.logger.debug("Skipping diff for \"%s\" for \"%s\".", change_type, modified_path)
 				except:
-					self.logger.exception("Failed to get diff for \"%s\" for \"%s\".", change_type, modified_path)
+					self.logger.exception("Failed to get diff for \"%s\" for \"%s\".\n  Title: \"%s\"\n  URL: %s", change_type, modified_path, pr.title, pr_url)
 
 		pr_url_to_latest_commit_seen[pr_url] = latest_commit
 		return result
