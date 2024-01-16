@@ -168,7 +168,7 @@ class Runner:
 
 		if personal_access_token:
 			credentials = BasicAuthentication('', personal_access_token)
-			self.rest_api_kwargs = {'auth': requests.auth.HTTPBasicAuth('', personal_access_token)}
+			self.rest_api_kwargs = {'auth': ('', personal_access_token)}
 
 		else:
 			managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
