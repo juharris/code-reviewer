@@ -175,7 +175,7 @@ class Runner:
 			if managed_identity_client_id:
 				managed_identity_credential = ManagedIdentityCredential(client_id=managed_identity_client_id)
 				token = managed_identity_credential.get_token(ADO_REST_API_AUTH_SCOPE)
-				token_dict = {'access_token': token.token, 'expires_in': token.expires_on}
+				token_dict = {'access_token': token.token}
 				credentials = OAuthTokenAuthentication(managed_identity_client_id, token_dict)
 				self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
 
