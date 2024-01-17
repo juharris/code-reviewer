@@ -23,13 +23,13 @@ RUN tdnf -y update && \
 
 WORKDIR /opt
 ENV PYTHON_VERSION=3.10.13
-RUN wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz
-RUN tar -xzf Python-${PYTHON_VERSION}.tgz
+RUN wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz && \
+    tar -xzf Python-${PYTHON_VERSION}.tgz
 WORKDIR /opt/Python-${PYTHON_VERSION}
-RUN ./configure --enable-optimizations
-RUN make -j $(nproc)
-RUN make install
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+RUN ./configure --enable-optimizations && \
+    make -j $(nproc) && \
+    make install && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3
 
 WORKDIR /code
 
