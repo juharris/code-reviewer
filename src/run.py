@@ -1,6 +1,8 @@
+import datetime
 import hashlib
 import logging
 import os
+import pathlib
 import re
 import sys
 import time
@@ -61,6 +63,9 @@ class Runner:
 		self.logger.addHandler(h)
 
 	def run(self) -> None:
+		# Log the docker image build timestamp for easier debugging.
+		self.log_docker_image_build_timestamp()
+
 		while True:
 			try:
 				self.load_config()
@@ -74,6 +79,16 @@ class Runner:
 				time.sleep(wait_after_review_s)
 			else:
 				break
+
+	def log_docker_image_build_timestamp(self) -> None:
+		docker_image_build_timestamp = None
+		this_dir = os.path.dirname(__file__)
+		timestamp_file_path = os.path.join(this_dir, '.docker_image_build_timestamp')
+		if pathlib.Path(timestamp_file_path).exists():
+			with open(timestamp_file_path, 'r') as f:
+				docker_image_build_timestamp = f.read().strip()
+		self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
+				f" | Docker Image Build Date: {docker_image_build_timestamp}")
 
 	def load_config(self) -> None:
 		config_contents = None

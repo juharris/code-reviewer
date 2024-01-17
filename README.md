@@ -321,3 +321,28 @@ Run the automated tests:
 ```bash
 PYTHONPATH=src pytest
 ```
+
+# Deployment
+
+The code reviewer can be deployed to an Azure App Service using a docker image built from the Dockerfile in this repo.
+(Other docker-based deployments may also be possible, but the Dockerfile has been created specifically for Azure App Service.)
+
+To deploy to an Azure App Service:
+1. Create an Azure Container Registry (ACR). The following instructions will assume it is called `myacr.azurecr.io`.
+1. Ensure you have a valid code reviewer config file named `config.yml` in the root directory of this repo. (It doesn't need to be committed.)
+1. In the repo root directory, build the docker image: `sudo docker build -t myacr.azurecr.io/code-reviewer .` (the final period is part of the command).
+1. Authenticate to your ACR: `az login && az acr login --name myacr`.
+1. Push the docker image to the ACR: `sudo docker push myacr.azurecr.io/code-reviewer`.
+1. Create an Azure App Service (aka. Azure Web App) with the "Docker Container" option and a Linux OS. During creation of this App Service, you can already link it to the docker image that you just pushed to the ACR.
+1. Configure the App Service to automatically pull and deploy the latest docker image from the ACR (the "Continuous deployment" option under "Deployment Center" at the time of writing).
+1. Create a user-assigned Managed Identity in Azure.
+1. Add the Managed Identity to your App Service (under "Identity" > "User assigned" at the time of writing).
+1. Add the environment variable `CR_MANAGED_IDENTITY_CLIENT_ID` to your App Service and use the client ID of your Managed Identity as the value.
+1. In Azure DevOps, navigate to the organization specified in your code reviewer config file. In the organization settings, add your Managed Identity as a user.
+1. Add your Managed Identity to the "Contributor" group for your Azure DevOps project.
+1. Finally, you may need to restart your Azure App Service to pick up all the above changes.
+
+Here are some resources you may find useful:
+- [Migrate custom software to Azure App Service using a custom container - Azure App Service](https://learn.microsoft.com/en-us/azure/app-service/tutorial-custom-container?tabs=azure-cli&pivots=container-linux)
+- [Choose the right authentication mechanism - Azure DevOps](https://learn.microsoft.com/en-us/azure/devops/integrate/get-started/authentication/authentication-guidance?view=azure-devops)
+- [Use service principals & managed identities - Azure DevOps](https://learn.microsoft.com/en-us/azure/devops/integrate/get-started/authentication/service-principal-managed-identity?view=azure-devops)
