@@ -6,7 +6,7 @@ import sys
 import time
 import urllib.parse
 from collections import Counter
-from typing import Collection, Optional
+from typing import Any, Collection, Optional
 
 import requests
 import yaml
@@ -21,8 +21,9 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        IdentityRefWithVote,
                                        WebApiCreateTagRequestData)
 from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
+from azure.identity import ManagedIdentityCredential
 from jsonpath import JSONPath
-from msrest.authentication import BasicAuthentication
+from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
 from config import Config, JsonPathCheck, PolicyEvaluationChecks
@@ -39,12 +40,16 @@ pr_url_to_latest_commit_seen = {}
 
 POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
 
+# App ID of the Azure DevOps REST API itself (not of a specific org or project)
+ADO_REST_API_AUTH_SCOPE = '499b84ac-1321-427f-aa17-267ca6975798/.default'
+
 
 class Runner:
 	config: Config
 	config_hash: Optional[str] = None
 	git_client: GitClient
 	policy_client: PolicyClient
+	rest_api_kwargs: dict[str, Any]
 
 	def __init__(self, config_source: str) -> None:
 		self.config_source = config_source
@@ -161,10 +166,21 @@ class Runner:
 			personal_access_token = os.environ.get('CR_ADO_PAT')
 			self.config['PAT'] = personal_access_token
 
-		if not personal_access_token:
-			raise ValueError("No personal access token provided. Please set the CR_ADO_PAT environment variable or add set 'PAT' the config file.")
+		if personal_access_token:
+			credentials = BasicAuthentication('', personal_access_token)
+			self.rest_api_kwargs = {'auth': ('', personal_access_token)}
 
-		credentials = BasicAuthentication('', personal_access_token)
+		else:
+			managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
+			if managed_identity_client_id:
+				managed_identity_credential = ManagedIdentityCredential(client_id=managed_identity_client_id)
+				token = managed_identity_credential.get_token(ADO_REST_API_AUTH_SCOPE)
+				token_dict = {'access_token': token.token}
+				credentials = OAuthTokenAuthentication(managed_identity_client_id, token_dict)
+				self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
+
+			else:
+				raise ValueError("No personal access token and no managed identity client ID provided. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT' in the config file.")
 
 		organization_url = self.config['organization_url']
 		project = self.config['project']
@@ -488,7 +504,6 @@ class Runner:
 		organization_url = self.config['organization_url']
 		project = self.config['project']
 		repository_id = pr.repository.id # type: ignore
-		personal_access_token: str = self.config['PAT'] # type: ignore
 
 		diffs: GitCommitDiffs = self.git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
 		changes: list[dict] = diffs.changes # type: ignore
@@ -516,14 +531,14 @@ class Runner:
 						# Use an undocumented API to get the diff.
 						# Found at https://stackoverflow.com/questions/41713616
 						diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
-						diff_request = requests.get(diff_url, auth=('', personal_access_token))
+						diff_request = requests.get(diff_url, **self.rest_api_kwargs)
 						diff_request.raise_for_status()
 						diff = diff_request.json()
 						result.append(FileDiff(change_type, modified_path, original_path=original_path, diff=diff))
 					elif change_type == 'add':
 						self.logger.debug("Getting new file \"%s\".", modified_path)
 						url = item['url']
-						request = requests.get(url, auth=('', personal_access_token))
+						request = requests.get(url, **self.rest_api_kwargs)
 						request.raise_for_status()
 						contents = request.text
 						result.append(FileDiff(change_type, modified_path, contents=contents))
