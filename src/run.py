@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import logging
 import os
+import pathlib
 import re
 import sys
 import time
@@ -82,11 +83,10 @@ class Runner:
 	def log_docker_image_build_timestamp(self) -> None:
 		docker_image_build_timestamp = None
 		this_dir = os.path.dirname(__file__)
-		try:
-			with open(os.path.join(this_dir, '.docker_image_build_timestamp'), 'r') as f:
+		timestamp_file_path = os.path.join(this_dir, '.docker_image_build_timestamp')
+		if pathlib.Path(timestamp_file_path).exists():
+			with open(timestamp_file_path, 'r') as f:
 				docker_image_build_timestamp = f.read().strip()
-		except FileNotFoundError:
-			pass
 		self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
 				f" | Docker Image Build Date: {docker_image_build_timestamp}")
 
