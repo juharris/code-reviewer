@@ -520,7 +520,7 @@ class Runner:
 		project = self.config['project']
 		repository_id = pr.repository.id # type: ignore
 
-		diffs: GitCommitDiffs = self.git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target)
+		diffs: GitCommitDiffs = self.git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target, top=100000)
 		changes: list[dict] = diffs.changes # type: ignore
 
 		path_regexs = self.config['unique_path_regexs']
