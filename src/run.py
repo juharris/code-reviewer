@@ -223,6 +223,10 @@ class Runner:
 			pr_url = f"{organization_url}/{urllib.parse.quote(project)}/_git/{urllib.parse.quote(repository_name)}/pullrequest/{pr.pull_request_id}"
 			try:
 				self.review_pr(pr, pr_url)
+
+				# Only acknowledge reviewing after successfully going through all rules.
+				# This could help to get around rate limiting.
+				pr_url_to_latest_commit_seen[pr_url] = pr.last_merge_source_commit
 			except:
 				self.logger.exception(f"Error while reviewing pull request called \"{pr.title}\" at {pr_url}")
 
@@ -562,7 +566,6 @@ class Runner:
 				except:
 					self.logger.exception("Failed to get diff for \"%s\" for \"%s\".\n  Title: \"%s\"\n  URL: %s", change_type, modified_path, pr.title, pr_url)
 
-		pr_url_to_latest_commit_seen[pr_url] = latest_commit
 		return result
 
 	def find_comment(self, threads: list[GitPullRequestCommentThread], comment: str, comment_id: Optional[str] = None, path: Optional[str] = None, line_num: Optional[int] = None) -> Optional[CommentSearchResult]:
