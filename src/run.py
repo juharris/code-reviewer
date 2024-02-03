@@ -481,6 +481,7 @@ class Runner:
 			return False
 		self.logger.debug("JSON Path '%s' matches: %s", check['json_path'], matches)
 		if (pat := check.get('regex')) is not None:
+			# `None` can be in matches maybe when a value such as a status is not set?
 			return any(m is not None and pat.match(m) for m in matches)
 		return True
 
