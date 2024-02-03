@@ -21,7 +21,8 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        GitPullRequestSearchCriteria,
                                        GitTargetVersionDescriptor, IdentityRef,
                                        IdentityRefWithVote,
-                                       WebApiCreateTagRequestData)
+                                       WebApiCreateTagRequestData,
+                                       WebApiTagDefinition)
 from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
 from azure.identity import ManagedIdentityCredential
 from jsonpath import JSONPath
@@ -437,16 +438,20 @@ class Runner:
 					self.logger.info("Would require: %s\nTitle: \"%s\"\nBy %s (%s)\n%s", required_reviewer, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 	def add_tags(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, tags: list[str]):
+		if pr.labels is None:
+			pr.labels = []
 		for tag in tags:
 			normalized_tag = tag.casefold()
-			if pr.labels is None or not any(label.name.casefold() == normalized_tag for label in pr.labels):
+			if not any(label.name.casefold() == normalized_tag for label in pr.labels):
 				if not is_dry_run:
 					repository_id = pr.repository.id # type: ignore
 					label = WebApiCreateTagRequestData(tag)
 					self.logger.info("ADDING TAG: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
-					self.git_client.create_pull_request_label(label, repository_id, pr.pull_request_id, project=project)
+					label_info = self.git_client.create_pull_request_label(label, repository_id, pr.pull_request_id, project=project)
 				else:
 					self.logger.info("Would add tag: \"%s\"\nTitle: \"%s\"\n%s", tag, pr.title, pr_url)
+					label_info = WebApiTagDefinition(name=tag)
+				pr.labels.append(label_info)
 
 	def check_policies(self, pr: GitPullRequest, pr_url: str, policy_evaluations: Optional[list[dict]], rule_policy_checks: list[PolicyEvaluationChecks]) -> tuple[bool, list[dict]]:
 		project_id = pr.repository.project.id # type: ignore
