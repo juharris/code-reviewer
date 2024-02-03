@@ -481,7 +481,7 @@ class Runner:
 			return False
 		self.logger.debug("JSON Path '%s' matches: %s", check['json_path'], matches)
 		if (pat := check.get('regex')) is not None:
-			return any(pat.match(m) for m in matches)
+			return any(m is not None and pat.match(m) for m in matches)
 		return True
 
 	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
