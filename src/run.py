@@ -534,6 +534,8 @@ class Runner:
 		changes: list[dict] = diffs.changes # type: ignore
 
 		path_regexs = self.config['unique_path_regexs']
+		if path_regexs is None or len(path_regexs) == 0:
+			return result
 
 		for change in changes:
 			item = change['item']
