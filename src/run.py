@@ -29,7 +29,7 @@ from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
-from config import Config, JsonPathCheck, PolicyEvaluationChecks
+from config import Config, JsonPathCheck, PolicyEvaluationChecks, Rule
 from file_diff import FileDiff
 from voting import is_vote_allowed, map_int_vote, map_vote
 
@@ -313,33 +313,8 @@ class Runner:
 			comment = rule.get('comment')
 			comment_id = rule.get('comment_id')
 			path_regex = rule.get('path_regex')
-			diff_regex = rule.get('diff_regex')
 			if path_regex is not None:
-				match_found = False
-				for file_diff in file_diffs:
-					if not path_regex.match(file_diff.path):
-						continue
-					if diff_regex is None:
-						# We don't need to check the diff.
-						match_found = True
-						break
-					else:
-						if file_diff.diff is not None:
-							# Handle edit.
-							for block in file_diff.diff['blocks']:
-								change_type = block['changeType']
-								if change_type == 0 or change_type == 2:
-									continue
-								assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
-								for line_num, line in enumerate(block['mLines'], start=block['mLine']):
-									local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
-									match_found = match_found or local_match_found
-						if file_diff.contents is not None:
-							# Handle add.
-							lines = file_diff.contents.splitlines()
-							for line_num, line in enumerate(lines, 1):
-								local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
-								match_found = match_found or local_match_found
+				match_found, threads = self.check_diff(pr, pr_url, project, is_dry_run, pr_author, threads, file_diffs, rule, comment, comment_id, path_regex)
 
 			if not match_found:
 				continue
@@ -356,6 +331,7 @@ class Runner:
 				self.add_tags(pr, pr_url, project, is_dry_run, tags)
 
 			# Don't comment on the PR overview for an issue with a diff.
+			diff_regex = rule.get('diff_regex')
 			if comment is not None and diff_regex is None:
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 				existing_comment_info = self.find_comment(threads, comment, comment_id)
@@ -396,6 +372,35 @@ class Runner:
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 				else:
 					self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+	def check_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diffs: list[FileDiff], rule: Rule, comment: Optional[str], comment_id: Optional[str], path_regex: re.Pattern):
+		match_found = False
+		diff_regex = rule.get('diff_regex')
+		for file_diff in file_diffs:
+			if not path_regex.match(file_diff.path):
+				continue
+			if diff_regex is None:
+				# We don't need to check the diff.
+				match_found = True
+				break
+			else:
+				if file_diff.diff is not None:
+					# Handle edit.
+					for block in file_diff.diff['blocks']:
+						change_type = block['changeType']
+						if change_type == 0 or change_type == 2:
+							continue
+						assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
+						for line_num, line in enumerate(block['mLines'], start=block['mLine']):
+							local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
+							match_found = match_found or local_match_found
+				if file_diff.contents is not None:
+					# Handle add.
+					lines = file_diff.contents.splitlines()
+					for line_num, line in enumerate(lines, 1):
+						local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
+						match_found = match_found or local_match_found
+		return match_found, threads
 
 	def add_optional_reviewers(self, pr: GitPullRequest, pr_url: str, project: str, pr_author: IdentityRef, is_dry_run: bool, reviewers: list[IdentityRefWithVote], optional_reviewers: Collection[str]):
 		for optional_reviewer in optional_reviewers:
@@ -517,6 +522,10 @@ class Runner:
 			self.logger.debug("Skipping checking diff for commit already seen (%s).", latest_commit)
 			return result
 
+		path_regexs = self.config['unique_path_regexs']
+		if len(path_regexs) == 0:
+			return result
+
 		# Get the files changed.
 		pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
 		pr_branch = urllib.parse.quote(pr_branch)
@@ -532,10 +541,6 @@ class Runner:
 
 		diffs: GitCommitDiffs = self.git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target, top=100000)
 		changes: list[dict] = diffs.changes # type: ignore
-
-		path_regexs = self.config['unique_path_regexs']
-		if path_regexs is None or len(path_regexs) == 0:
-			return result
 
 		for change in changes:
 			item = change['item']
