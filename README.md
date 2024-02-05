@@ -135,6 +135,7 @@ wait_after_review_s: 666
 # Checking files:
 # * file_pattern: A regex pattern that a file path must match. A `diff_pattern` is not required when this is set.
 # * diff_pattern: A regex pattern that a new or the new version of a modified line must match in files matching `file_pattern`.
+# A regex with the multiline flag (e.g., '(?m)^\s*line 1\n\s*line 2') can be used to match multiple lines.
 
 # If all of the checks in a rule match, then any actions specified will be applied.
 # Actions:
