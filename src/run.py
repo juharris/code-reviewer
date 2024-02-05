@@ -380,7 +380,7 @@ class Runner:
 			if not path_regex.match(file_diff.path):
 				continue
 			if diff_regex is None:
-				# We don't need to check the diff.
+				# The path_regex matched and we don't need to check the diff.
 				match_found = True
 				break
 			else:
@@ -391,15 +391,38 @@ class Runner:
 						if change_type == 0 or change_type == 2:
 							continue
 						assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
-						for line_num, line in enumerate(block['mLines'], start=block['mLine']):
-							local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
+						first_line_num = block['mLine']
+						for start_line_num, line in enumerate(block['mLines'], start=first_line_num):
+							local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
+							match_found = match_found or local_match_found
+						
+						if diff_regex.flags & re.MULTILINE:
+							text = '\n'.join(block['mLines'])
+							local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, file_diff, text, comment, comment_id, diff_regex, first_line_num)
 							match_found = match_found or local_match_found
 				if file_diff.contents is not None:
 					# Handle add.
 					lines = file_diff.contents.splitlines()
-					for line_num, line in enumerate(lines, 1):
-						local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, line_num, line)
+					# File line numbers are 1-based in the ADO API and UI.
+					first_line_num = 1
+					for start_line_num, line in enumerate(lines, first_line_num):
+						local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
 						match_found = match_found or local_match_found
+					
+					if diff_regex.flags & re.MULTILINE:
+						local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, file_diff, file_diff.contents, comment, comment_id, diff_regex, first_line_num)
+						match_found = match_found or local_match_found
+		return match_found, threads
+
+	def check_text_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diff: FileDiff, text: str, comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, first_line_num: int):
+		match_found = False
+		for m in diff_regex.finditer(text):
+			start_line_num = first_line_num + text.count('\n', 0, m.start())
+			start_offset = m.start() - text.rfind('\n', 0, m.start())
+			end_line_num = start_line_num + text.count('\n', m.start(), m.end())
+			end_offset = m.end() - text.rfind('\n', 0, m.end())
+			local_match_found, threads = self.handle_diff_found(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
+			match_found = match_found or local_match_found
 		return match_found, threads
 
 	def add_optional_reviewers(self, pr: GitPullRequest, pr_url: str, project: str, pr_author: IdentityRef, is_dry_run: bool, reviewers: list[IdentityRefWithVote], optional_reviewers: Collection[str]):
@@ -498,21 +521,26 @@ class Runner:
 	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
 		if (m := diff_regex.match(line)):
-			repository_id = pr.repository.id # type: ignore
-			match_found = True
 			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
-			if comment is not None:
-				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				existing_comment_info = self.find_comment(threads, comment, comment_id, file_diff.path, line_num)
-				if existing_comment_info is None:
-					# Docs say the character indices are 0-based, but they seem to be 1-based.
-					# When 0 is given, the context of the line is hidden in the Overview.
-					thread_context = CommentThreadContext(file_diff.path, 
-						right_file_start=CommentPosition(line_num, m.pos + 1),
-						right_file_end=CommentPosition(line_num, m.endpos + 1))
-					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context, comment_id=comment_id)
-				else:
-					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
+			# Need to add one for some reason, but it's not needed when commenting on multiple lines.
+			return self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, comment, comment_id, file_diff, line_num, 1 + m.start(), line_num, 1 + m.end())
+		return match_found, threads
+	
+	def handle_diff_found(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], file_diff: FileDiff, start_line_num: int, start_offset: int, end_line_num: int, end_offset: int):
+		repository_id = pr.repository.id # type: ignore
+		match_found = True
+		if comment is not None:
+			threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			existing_comment_info = self.find_comment(threads, comment, comment_id, file_diff.path, start_line_num)
+			if existing_comment_info is None:
+				# Docs say the character indices are 0-based, but they seem to be 1-based.
+				# When 0 is given, the context of the line is hidden in the Overview.
+				thread_context = CommentThreadContext(file_diff.path, 
+					right_file_start=CommentPosition(start_line_num, start_offset),
+					right_file_end=CommentPosition(end_line_num, end_offset))
+				self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context, comment_id=comment_id)
+			else:
+				self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
@@ -581,7 +609,7 @@ class Runner:
 
 		return result
 
-	def find_comment(self, threads: list[GitPullRequestCommentThread], comment: str, comment_id: Optional[str] = None, path: Optional[str] = None, line_num: Optional[int] = None) -> Optional[CommentSearchResult]:
+	def find_comment(self, threads: list[GitPullRequestCommentThread], comment: str, comment_id: Optional[str] = None, path: Optional[str] = None, start_line_num: Optional[int] = None) -> Optional[CommentSearchResult]:
 		result = None
 		current_user_id = self.config['user_id']
 		comment_id_marker = get_comment_id_marker(comment_id)
@@ -590,7 +618,7 @@ class Runner:
 			comments: Collection[Comment] = thread.comments # type: ignore
 			# We could filter by `thread.status` (can be 'active', 'unknown', ...), but we want to find resolved threads too and reactivate them, if necessary.
 			if path is not None:
-				assert line_num is not None
+				assert start_line_num is not None
 				if thread.thread_context is None:
 					continue
 				if thread.thread_context.file_path != path:
@@ -599,7 +627,7 @@ class Runner:
 				# Same path.
 				if thread.thread_context.right_file_start is None:
 					continue
-				if thread.thread_context.right_file_start.line != line_num:
+				if thread.thread_context.right_file_start.line != start_line_num:
 					continue
 			for c in comments:
 				if not c.is_deleted:
