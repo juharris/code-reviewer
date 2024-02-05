@@ -393,7 +393,7 @@ class Runner:
 						assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
 						first_line_num = block['mLine']
 						for start_line_num, line in enumerate(block['mLines'], start=first_line_num):
-							local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
+							local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
 							match_found = match_found or local_match_found
 						
 						if diff_regex.flags & re.MULTILINE:
@@ -406,23 +406,12 @@ class Runner:
 					# File line numbers are 1-based in the ADO API and UI.
 					first_line_num = 1
 					for start_line_num, line in enumerate(lines, first_line_num):
-						local_match_found, threads = self.handle_diff_check(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
+						local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
 						match_found = match_found or local_match_found
 					
 					if diff_regex.flags & re.MULTILINE:
 						local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, file_diff, file_diff.contents, comment, comment_id, diff_regex, first_line_num)
 						match_found = match_found or local_match_found
-		return match_found, threads
-
-	def check_text_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diff: FileDiff, text: str, comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, first_line_num: int):
-		match_found = False
-		for m in diff_regex.finditer(text):
-			start_line_num = first_line_num + text.count('\n', 0, m.start())
-			start_offset = m.start() - text.rfind('\n', 0, m.start())
-			end_line_num = start_line_num + text.count('\n', m.start(), m.end())
-			end_offset = m.end() - text.rfind('\n', 0, m.end())
-			local_match_found, threads = self.handle_diff_found(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
-			match_found = match_found or local_match_found
 		return match_found, threads
 
 	def add_optional_reviewers(self, pr: GitPullRequest, pr_url: str, project: str, pr_author: IdentityRef, is_dry_run: bool, reviewers: list[IdentityRefWithVote], optional_reviewers: Collection[str]):
@@ -518,11 +507,24 @@ class Runner:
 			return any(m is not None and pat.match(m) for m in matches)
 		return True
 
-	def handle_diff_check(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
+	def check_text_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diff: FileDiff, text: str, comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, first_line_num: int):
+		match_found = False
+		for m in diff_regex.finditer(text):
+			start_line_num = first_line_num + text.count('\n', 0, m.start())
+			start_offset = m.start() - text.rfind('\n', 0, m.start())
+			end_line_num = start_line_num + text.count('\n', m.start(), m.end())
+			end_offset = m.end() - text.rfind('\n', 0, m.end())
+			local_match_found, threads = self.handle_diff_found(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
+			match_found = match_found or local_match_found
+		return match_found, threads
+
+	def check_line_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
 		if (m := diff_regex.match(line)):
 			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
+			# The docs say that the offsets are 0-based, but they seem to be 1-based.
 			# Need to add one for some reason, but it's not needed when commenting on multiple lines.
+			# Maybe the line starts with a newline when checking multiple lines?
 			return self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, comment, comment_id, file_diff, line_num, 1 + m.start(), line_num, 1 + m.end())
 		return match_found, threads
 	
