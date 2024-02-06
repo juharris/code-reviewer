@@ -357,7 +357,7 @@ class Runner:
 				requeue_comment = rule.get('requeue_comment')
 				if requeue_comment is not None:
 					threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, requeue_comment)
+				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, requeue_comment, comment_id)
 
 			vote = rule.get('vote')
 			# Votes were converted when the config was loaded.
@@ -504,7 +504,7 @@ class Runner:
 		self.logger.debug("JSON Path '%s' matches: %s", check['json_path'], matches)
 		if (pat := check.get('regex')) is not None:
 			# `None` can be in matches maybe when a value such as a status is not set?
-			return any(m is not None and pat.match(m) for m in matches)
+			return any(m is not None and pat.match(str(m)) for m in matches)
 		return True
 
 	def check_text_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diff: FileDiff, text: str, comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, first_line_num: int):
@@ -740,7 +740,7 @@ class Runner:
 			self.logger.info("Would set title to: \"%s\" from \"%s\"\n%s", new_title, pr.title, pr_url)
 		pr.title = new_title
 
-	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], requeue_comment: Optional[str]):
+	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], requeue_comment: Optional[str], comment_id: Optional[str]):
 		# Find the policy to requeue.
 		for policy_evaluation in policy_evaluations:
 			if all(self.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
@@ -759,7 +759,7 @@ class Runner:
 				if requeue_comment is not None:
 					assert threads is not None, "`threads` must be provided to add a comment."
 					pr_author: IdentityRef = pr.created_by # type: ignore
-					self.send_comment(pr, pr_url, is_dry_run, pr_author, requeue_comment, threads, status='closed')
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, requeue_comment, threads, status='closed', comment_id=comment_id)
 
 
 def main():
