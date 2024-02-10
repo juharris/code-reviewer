@@ -82,14 +82,13 @@ class Runner:
 				break
 
 	def log_docker_image_build_timestamp(self) -> None:
-		docker_image_build_timestamp = None
 		this_dir = os.path.dirname(__file__)
 		timestamp_file_path = os.path.join(this_dir, '.docker_image_build_timestamp')
 		if pathlib.Path(timestamp_file_path).exists():
 			with open(timestamp_file_path, 'r') as f:
 				docker_image_build_timestamp = f.read().strip()
-		self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
-				f" | Docker Image Build Date: {docker_image_build_timestamp}")
+				self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
+						f" | Docker Image Build Date: {docker_image_build_timestamp}")
 
 	def load_config(self) -> None:
 		config_contents = None
@@ -616,6 +615,8 @@ class Runner:
 					else:
 						self.logger.debug("Skipping diff for \"%s\" for \"%s\".", change_type, modified_path)
 				except:
+					# This usually happens when the file doesn't exist anymore in the target branch.
+					# Pulling the target branch should help.
 					self.logger.exception("Failed to get diff for \"%s\" for \"%s\".\n  Title: \"%s\"\n  URL: %s", change_type, modified_path, pr.title, pr_url)
 
 		return result
