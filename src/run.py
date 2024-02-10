@@ -29,7 +29,7 @@ from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
-from config import Config, JsonPathCheck, PolicyEvaluationChecks, Rule
+from config import Config, JsonPathCheck, MatchType, PolicyEvaluationChecks, Rule
 from file_diff import FileDiff
 from voting import is_vote_allowed, map_int_vote, map_vote
 
@@ -141,6 +141,11 @@ class Runner:
 							evaluation_check['json_path_'] = JSONPath(evaluation_check['json_path'])
 							if (pat := evaluation_check.get('pattern')) is not None:
 								evaluation_check['regex'] = re.compile(pat)
+						match_type = rule_policy_check.get('match_type')
+						if match_type is None:
+							rule_policy_check['match_type'] = MatchType.ANY
+						else:
+							rule_policy_check['match_type'] = MatchType(match_type)
 
 				if (requeue := rule.get('requeue')) is not None:
 					for check in requeue:
@@ -477,6 +482,7 @@ class Runner:
 			policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
 			policy_evaluations = [c.as_dict() for c in policy_evaluations_]
 			self.logger.debug("Policy evaluations: %s\nfor %s", policy_evaluations, pr_url)
+			# import json; self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2), pr_url)
 		all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
 		return all_rules_match, policy_evaluations
 
@@ -485,6 +491,9 @@ class Runner:
 		:returns: `True` if any of the policy evaluations match the rule.
 		"""
 		result = any(self.is_policy_rule_match(rule_policy_check, policy_evaluation) for policy_evaluation in policy_evaluations)
+		match_type = rule_policy_check['match_type']
+		if match_type == MatchType.NOT_ANY:
+			result = not result
 		self.logger.debug("Policy check %s found match: %s", rule_policy_check, result)
 		return result
 

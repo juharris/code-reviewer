@@ -1,7 +1,15 @@
 import re
-from typing import Collection, Optional, TypedDict
+from typing import Optional, TypedDict
 
 from jsonpath import JSONPath
+
+
+from enum import Enum
+
+
+class MatchType(Enum):
+	ANY = "any"
+	NOT_ANY = "not_any"
 
 
 class JsonPathCheck(TypedDict):
@@ -15,6 +23,7 @@ class JsonPathCheck(TypedDict):
 
 
 class PolicyEvaluationChecks(TypedDict):
+	match_type: MatchType
 	evaluation_checks: list[JsonPathCheck]
 
 
