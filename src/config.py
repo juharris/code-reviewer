@@ -1,13 +1,19 @@
-
-from enum import Enum
 import re
+from enum import Enum
 from typing import Optional, TypedDict
 
 from jsonpath import JSONPath
 
 
+DEFAULT_MAX_REQUEUES_PER_RUN = 10
+
+
 class RequeueConfig(TypedDict):
 	max_per_run: Optional[int]
+	"""
+	The maximum number of re-queues to perform in a single run across all rules for all pull requests.
+	Defaults to 10.
+	"""
 
 
 class MatchType(Enum):
@@ -90,6 +96,8 @@ class Config(TypedDict):
 	project: str
 	repository_name: str
 	top: int
+	requeue_config: Optional[RequeueConfig]
+
 	rules: list[Rule]
 	unique_path_regexs: set[re.Pattern]
 
@@ -98,5 +106,3 @@ class Config(TypedDict):
 	user_id: Optional[str]
 
 	is_stats_enabled: Optional[bool]
-
-	requeue_config: Optional[RequeueConfig]
