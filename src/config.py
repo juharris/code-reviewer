@@ -1,11 +1,13 @@
+
+from enum import Enum
 import re
 from typing import Optional, TypedDict
 
 from jsonpath import JSONPath
 
 
-from enum import Enum
-
+class RequeueConfig(TypedDict):
+	max_per_run: Optional[int]
 
 class MatchType(Enum):
 	ANY = "any"
@@ -95,3 +97,5 @@ class Config(TypedDict):
 	user_id: Optional[str]
 
 	is_stats_enabled: Optional[bool]
+
+	requeue_config: Optional[RequeueConfig]
