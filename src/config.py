@@ -9,6 +9,7 @@ from jsonpath import JSONPath
 class RequeueConfig(TypedDict):
 	max_per_run: Optional[int]
 
+
 class MatchType(Enum):
 	ANY = "any"
 	NOT_ANY = "not_any"
