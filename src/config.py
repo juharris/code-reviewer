@@ -1,7 +1,34 @@
 import re
-from typing import Collection, Optional, TypedDict
+from enum import Enum
+from typing import Optional, TypedDict
 
 from jsonpath import JSONPath
+
+DEFAULT_MAX_REQUEUES_PER_RUN = 10
+
+
+class RequeueConfig(TypedDict):
+	max_per_run: Optional[int]
+	"""
+	The maximum number of re-queues to perform in a single run across all rules for all pull requests.
+	Defaults to 10.
+	"""
+
+
+class MatchType(Enum):
+	"""
+	How the checks combination of the checks should be evaluated.
+	"""
+
+	ANY = "any"
+	"""
+	At least one of the checks should match.
+	"""
+
+	NOT_ANY = "not_any"
+	"""
+	None of the checks should match.
+	"""
 
 
 class JsonPathCheck(TypedDict):
@@ -15,6 +42,10 @@ class JsonPathCheck(TypedDict):
 
 
 class PolicyEvaluationChecks(TypedDict):
+	match_type: MatchType
+	"""
+	Determines how the checks combination of the checks should be evaluated.
+	"""
 	evaluation_checks: list[JsonPathCheck]
 
 
@@ -78,6 +109,9 @@ class Config(TypedDict):
 	project: str
 	repository_name: str
 	top: int
+
+	requeue_config: Optional[RequeueConfig]
+
 	rules: list[Rule]
 	unique_path_regexs: set[re.Pattern]
 

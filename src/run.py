@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import json
 import logging
 import os
 import pathlib
@@ -29,8 +30,10 @@ from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
-from config import Config, JsonPathCheck, PolicyEvaluationChecks, Rule
+from config import (DEFAULT_MAX_REQUEUES_PER_RUN, Config, JsonPathCheck,
+                    MatchType, PolicyEvaluationChecks, RequeueConfig, Rule)
 from file_diff import FileDiff
+from run_state import RunState
 from voting import is_vote_allowed, map_int_vote, map_vote
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
@@ -70,7 +73,9 @@ class Runner:
 		while True:
 			try:
 				self.load_config()
-				self.review_prs()
+
+				state = RunState()
+				self.review_prs(state)
 			except:
 				self.logger.exception(f"Error while trying to load the config or get pull requests to review.")
 
@@ -82,17 +87,16 @@ class Runner:
 				break
 
 	def log_docker_image_build_timestamp(self) -> None:
-		docker_image_build_timestamp = None
 		this_dir = os.path.dirname(__file__)
 		timestamp_file_path = os.path.join(this_dir, '.docker_image_build_timestamp')
 		if pathlib.Path(timestamp_file_path).exists():
 			with open(timestamp_file_path, 'r') as f:
 				docker_image_build_timestamp = f.read().strip()
-		self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
-				f" | Docker Image Build Date: {docker_image_build_timestamp}")
+				self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
+						f" | Docker Image Build Date: {docker_image_build_timestamp}")
 
 	def load_config(self) -> None:
-		config_contents = None
+		config_contents: Optional[str] = None
 		if self.config_source.startswith('https://') or self.config_source.startswith('http://'):
 			max_num_tries = 3
 			for try_num in range(max_num_tries):
@@ -119,6 +123,14 @@ class Runner:
 			log_level = logging.getLevelName(config.get('log_level', 'INFO'))
 			self.logger.setLevel(log_level)
 
+			requeue_config = config.get('requeue_config')
+			if requeue_config is None:
+				requeue_config = RequeueConfig(max_per_run=DEFAULT_MAX_REQUEUES_PER_RUN)
+				config['requeue_config'] = requeue_config
+			else:
+				if requeue_config.get('max_per_run') is None:
+					requeue_config['max_per_run'] = DEFAULT_MAX_REQUEUES_PER_RUN
+
 			unique_path_regexs = set()
 			rules = config['rules']
 			for rule in rules:
@@ -141,6 +153,11 @@ class Runner:
 							evaluation_check['json_path_'] = JSONPath(evaluation_check['json_path'])
 							if (pat := evaluation_check.get('pattern')) is not None:
 								evaluation_check['regex'] = re.compile(pat)
+						match_type = rule_policy_check.get('match_type')
+						if match_type is None:
+							rule_policy_check['match_type'] = MatchType.ANY
+						else:
+							rule_policy_check['match_type'] = MatchType(match_type)
 
 				if (requeue := rule.get('requeue')) is not None:
 					for check in requeue:
@@ -176,7 +193,7 @@ class Runner:
 			s += log_start
 			self.logger.info(s)
 
-	def review_prs(self):
+	def review_prs(self, state: RunState) -> None:
 		personal_access_token = self.config.get('PAT')
 		if not personal_access_token:
 			personal_access_token = os.environ.get('CR_ADO_PAT')
@@ -223,7 +240,7 @@ class Runner:
 		for pr in prs:
 			pr_url = f"{organization_url}/{urllib.parse.quote(project)}/_git/{urllib.parse.quote(repository_name)}/pullrequest/{pr.pull_request_id}"
 			try:
-				self.review_pr(pr, pr_url)
+				self.review_pr(pr, pr_url, state)
 
 				# Only acknowledge reviewing after successfully going through all rules.
 				# This could help to get around rate limiting.
@@ -235,7 +252,7 @@ class Runner:
 			self.display_stats()
 
 
-	def review_pr(self, pr: GitPullRequest, pr_url: str):
+	def review_pr(self, pr: GitPullRequest, pr_url: str, state: RunState):
 		project = self.config['project']
 		repository_id = pr.repository.id # type: ignore
 		rules = self.config['rules']
@@ -357,7 +374,7 @@ class Runner:
 				requeue_comment = rule.get('requeue_comment')
 				if requeue_comment is not None:
 					threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, requeue_comment, comment_id)
+				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, requeue_comment, comment_id, state)
 
 			vote = rule.get('vote')
 			# Votes were converted when the config was loaded.
@@ -476,7 +493,8 @@ class Runner:
 		if policy_evaluations is None:
 			policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
 			policy_evaluations = [c.as_dict() for c in policy_evaluations_]
-			self.logger.debug("Policy evaluations: %s\nfor %s", policy_evaluations, pr_url)
+			if self.logger.isEnabledFor(logging.DEBUG):
+				self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2), pr_url)
 		all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
 		return all_rules_match, policy_evaluations
 
@@ -485,6 +503,9 @@ class Runner:
 		:returns: `True` if any of the policy evaluations match the rule.
 		"""
 		result = any(self.is_policy_rule_match(rule_policy_check, policy_evaluation) for policy_evaluation in policy_evaluations)
+		match_type = rule_policy_check['match_type']
+		if match_type == MatchType.NOT_ANY:
+			result = not result
 		self.logger.debug("Policy check %s found match: %s", rule_policy_check, result)
 		return result
 
@@ -607,6 +628,8 @@ class Runner:
 					else:
 						self.logger.debug("Skipping diff for \"%s\" for \"%s\".", change_type, modified_path)
 				except:
+					# This usually happens when the file doesn't exist anymore in the target branch.
+					# Pulling the target branch should help.
 					self.logger.exception("Failed to get diff for \"%s\" for \"%s\".\n  Title: \"%s\"\n  URL: %s", change_type, modified_path, pr.title, pr_url)
 
 		return result
@@ -740,9 +763,16 @@ class Runner:
 			self.logger.info("Would set title to: \"%s\" from \"%s\"\n%s", new_title, pr.title, pr_url)
 		pr.title = new_title
 
-	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], requeue_comment: Optional[str], comment_id: Optional[str]):
+	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], requeue_comment: Optional[str], comment_id: Optional[str], state: RunState):
+		requeue_config = self.config['requeue_config']
+		assert requeue_config is not None
+		max_requeues_per_run = requeue_config['max_per_run']
+		assert max_requeues_per_run is not None
 		# Find the policy to requeue.
 		for policy_evaluation in policy_evaluations:
+			if state.num_requeues >= max_requeues_per_run:
+				self.logger.debug("Not requeuing \"%s\" because the maximum number of requeues has been reached. URL: %s", pr.title, pr_url)
+				break
 			if all(self.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
 				name_matches = POLICY_DISPLAY_NAME_JSONPATH.search(policy_evaluation)
 				name = name_matches[0] if (name_matches is not None and len(name_matches) > 0) else None
@@ -755,6 +785,8 @@ class Runner:
 					self.policy_client.requeue_policy_evaluation(project, evaluation_id)
 				else:
 					self.logger.info("Would requeue \"%s\" (%s) for \"%s\"\n%s", name, evaluation_id, pr.title, pr_url)
+
+				state.num_requeues += 1
 
 				if requeue_comment is not None:
 					assert threads is not None, "`threads` must be provided to add a comment."
