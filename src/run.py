@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import json
 import logging
 import os
 import pathlib
@@ -492,8 +493,8 @@ class Runner:
 		if policy_evaluations is None:
 			policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
 			policy_evaluations = [c.as_dict() for c in policy_evaluations_]
-			self.logger.debug("Policy evaluations: %s\nfor %s", policy_evaluations, pr_url)
-			# import json; self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2), pr_url)
+			if self.logger.isEnabledFor(logging.DEBUG):
+				self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2), pr_url)
 		all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
 		return all_rules_match, policy_evaluations
 
