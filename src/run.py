@@ -766,7 +766,7 @@ class Runner:
 	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], requeue_comment: Optional[str], comment_id: Optional[str], state: RunState):
 		requeue_config = self.config['requeue_config']
 		assert requeue_config is not None
-		max_requeues_per_run = requeue_config.get('max_per_run')
+		max_requeues_per_run = requeue_config['max_per_run']
 		assert max_requeues_per_run is not None
 		# Find the policy to requeue.
 		for policy_evaluation in policy_evaluations:
