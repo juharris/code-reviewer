@@ -127,11 +127,11 @@ wait_after_review_s: 666
 # * target_ref_name_pattern: A regex pattern that the source branch must match. E.g., 'refs/heads/main'.
 
 # * policy_checks: A list of checks to run for the output of policy evaluations (build checks).
-# Every check in the `evaluation_checks` list must match the ANY of the policy evaluations for the entire rule to match.
-# The `match_type` property can be set to 'not_any' to change the behavior to require that no single policy evaluation matches the checks in `evaluation_checks`.
+# Every check in the `evaluation_checks` list must match at least one of the policy evaluations for the entire rule to match.
+# The `match_type` property can be set to 'not_any' to change the behavior to require that none of the policy evaluation match the checks in `evaluation_checks`.
 # Note that there can be multiple `evaluation_checks` lists in a rule so that a combination ('AND') of checks can be used to only perform actions based on the output of multiple policy evaluations.
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/policy/evaluations/list for the API output to understand what JSON Paths are possible.
-# The examples below show how to use the JSON Paths to check the build status.
+# The examples below show how to use the JSON Paths and `match_type` to check the build status.
 
 # Checking files:
 # * file_pattern: A regex pattern that a file path must match. A `diff_pattern` is not required when this is set.
@@ -268,6 +268,8 @@ rules:
           pattern: '^Work item linking$'
         - json_path: '$.status'
           pattern: '^approved$'
+      # Make sure that all required approvers have approved by
+      # making sure that none of the checks for required reviewers are not approved.
       - match_type: 'not_any'
         evaluation_checks:
         - json_path: '$.configuration.type.display_name'
