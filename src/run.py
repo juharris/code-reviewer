@@ -35,7 +35,7 @@ from config import (DEFAULT_MAX_REQUEUES_PER_RUN, Config, JsonPathCheck,
                     MatchType, PolicyEvaluationChecks, RequeueConfig, Rule)
 from file_diff import FileDiff
 from run_state import RunState
-from voting import (APPROVE_WITH_SUGGESTIONS_VOTE, NO_VOTE, is_vote_allowed,
+from voting import (NO_VOTE, is_vote_allowed,
                     map_int_vote, map_vote)
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
