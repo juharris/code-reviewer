@@ -110,13 +110,25 @@ class Config(TypedDict):
 	repository_name: str
 	top: int
 
+	status: Optional[str]
+
+	target_branch: Optional[str]
+	pr_branch: Optional[str]
+
+	is_dry_run: Optional[bool]
+
+	log_level: Optional[str]
+
 	requeue_config: Optional[RequeueConfig]
+
+	wait_after_review_s: Optional[int]
+
+	is_vote_reset_after_changes_enabled: Optional[bool]
 
 	rules: list[Rule]
 	unique_path_regexs: set[re.Pattern]
 
 	PAT: Optional[str]
-	current_user: Optional[str]
-	user_id: Optional[str]
+	user_id: str
 
 	is_stats_enabled: Optional[bool]

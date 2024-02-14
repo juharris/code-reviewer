@@ -2,6 +2,7 @@ from typing import Optional
 
 
 APPROVE_VOTE = 10
+APPROVE_WITH_SUGGESTIONS_VOTE = 5
 NO_VOTE = 0
 
 
@@ -18,7 +19,7 @@ def map_vote(vote: Optional[int | str]) -> Optional[int]:
 		case 'none' | 'reset':
 			return NO_VOTE
 		case 'approve_with_suggestions':
-			return 5
+			return APPROVE_WITH_SUGGESTIONS_VOTE
 		case 'approve':
 			return APPROVE_VOTE
 	return None
