@@ -19,6 +19,7 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        GitBaseVersionDescriptor, GitClient,
                                        GitCommitDiffs, GitPullRequest,
                                        GitPullRequestCommentThread,
+                                       GitPullRequestIteration,
                                        GitPullRequestSearchCriteria,
                                        GitTargetVersionDescriptor, IdentityRef,
                                        IdentityRefWithVote,
@@ -34,7 +35,8 @@ from config import (DEFAULT_MAX_REQUEUES_PER_RUN, Config, JsonPathCheck,
                     MatchType, PolicyEvaluationChecks, RequeueConfig, Rule)
 from file_diff import FileDiff
 from run_state import RunState
-from voting import is_vote_allowed, map_int_vote, map_vote
+from voting import (NO_VOTE, is_vote_allowed,
+                    map_int_vote, map_vote)
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
 
@@ -120,7 +122,7 @@ class Runner:
 			self.logger.info("Loading configuration from '%s'.", self.config_source)
 			config: Config = yaml.safe_load(config_contents)
 
-			log_level = logging.getLevelName(config.get('log_level', 'INFO'))
+			log_level = logging.getLevelName(config.get('log_level', 'INFO') or 'INFO')
 			self.logger.setLevel(log_level)
 
 			requeue_config = config.get('requeue_config')
@@ -132,6 +134,14 @@ class Runner:
 					requeue_config['max_per_run'] = DEFAULT_MAX_REQUEUES_PER_RUN
 
 			unique_path_regexs = set()
+
+			reset_votes_after_changes = config.get('reset_votes_after_changes')
+			if reset_votes_after_changes is not None:
+				assert isinstance(reset_votes_after_changes, list), f"reset_votes_after_changes must be a list. Got: {reset_votes_after_changes} with type: {type(reset_votes_after_changes)}"
+				reset_votes_after_changes = set(map_vote(vote) for vote in reset_votes_after_changes)
+				assert all(vote is not None for vote in reset_votes_after_changes), f"reset_votes_after_changes must be a list of integers. Got: {reset_votes_after_changes}"
+				config['reset_votes_after_changes'] = reset_votes_after_changes # type: ignore
+
 			rules = config['rules']
 			for rule in rules:
 				for name in ('author',) + attributes_with_patterns:
@@ -258,18 +268,16 @@ class Runner:
 		rules = self.config['rules']
 
 		user_id = self.config['user_id']
-		is_dry_run = self.config.get('is_dry_run', False)
+		is_dry_run = self.config.get('is_dry_run', False) or False
 
 		pr_author: IdentityRef = pr.created_by # type: ignore
 		reviewers: list[IdentityRefWithVote] = pr.reviewers # type: ignore
 		self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-		current_vote: Optional[int] = None
 		reviewer: Optional[IdentityRefWithVote] = None
 		for r in reviewers:
 			if r.id == user_id:
 				reviewer = r
-				current_vote = r.vote
 				break
 
 		if reviewer is None:
@@ -293,6 +301,13 @@ class Runner:
 		
 		policy_evaluations: Optional[list[dict]] = None
 		file_diffs = self.get_diffs(pr, pr_url)
+
+		reset_votes_after_changes = self.config.get('reset_votes_after_changes')
+		if reset_votes_after_changes is not None:
+			try:
+				threads = self.check_votes(pr, pr_url, project, is_dry_run, reviewer, reset_votes_after_changes, threads)
+			except:
+				self.logger.exception("Error while trying to reset votes after changes for \"%s\" at %s", pr.title, pr_url)
 
 		for rule in rules:
 			# All checks must match.
@@ -380,15 +395,65 @@ class Runner:
 			# Votes were converted when the config was loaded.
 			assert vote is None or isinstance(vote, int), f"Vote must be an integer. Got: {vote} with type: {type(vote)}"
 			# Can't vote on a draft.
-			if not pr.is_draft and is_vote_allowed(current_vote, vote):
+			if not pr.is_draft and is_vote_allowed(reviewer.vote, vote):
 				assert vote is not None
-				reviewer.vote = current_vote = vote
+				reviewer.vote = vote
 				vote_str = map_int_vote(vote)
 				if not is_dry_run:
 					self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 					self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
 				else:
 					self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+	def check_votes(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, reviewer: IdentityRefWithVote, reset_votes_after_changes: Collection[int], threads: Optional[list[GitPullRequestCommentThread]]) -> list[GitPullRequestCommentThread] | None:
+		if pr.is_draft or reviewer.vote not in reset_votes_after_changes:
+			# Nothing to reset.
+			return threads
+
+		repository_id = pr.repository.id # type: ignore
+		user_id = reviewer.id
+
+		# Reset the vote if there is a change to the PR.
+		iterations: list[GitPullRequestIteration] = self.git_client.get_pull_request_iterations(repository_id, pr.pull_request_id, project=project, include_commits=False)
+		if len(iterations) == 0:
+			# There are no changes. Shouldn't happen.
+			# Maybe it can happen if someone removes commits or make a pull request with no commits?
+			return threads
+
+		iterations.sort(key=lambda i: i.updated_date) # type: ignore
+
+		last_iteration = iterations[-1]
+		if threads is None:
+			threads = self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
+			assert threads is not None
+		threads.sort(key=lambda t: t.last_updated_date, reverse=True) # type: ignore
+
+		# Find the latest thread where the user voted after the last iteration.
+		for t in threads:
+			thread_last_updated_date = t.last_updated_date
+			if thread_last_updated_date is None:
+				# Should not happen.
+				continue
+			if thread_last_updated_date <= last_iteration.updated_date:
+				# There are no more threads to check because the rest are before the last iteration.
+				break
+			if (comments := t.comments) is not None \
+					and len(comments) > 0 \
+					and comments[0].author.id == user_id \
+					and (props := t.properties) is not None \
+					and (vote_result := props.get('CodeReviewVoteResult')) is not None \
+					and (vote := vote_result.get('$value')) is not None:
+				self.logger.debug("Found vote '%s' at %s > %s", vote, thread_last_updated_date, last_iteration.updated_date)
+				# We found a vote for the user after the last iteration so we don't need to reset the vote.
+				return threads
+
+		reviewer.vote = NO_VOTE
+		if not is_dry_run:
+			self.logger.info("RESETTING VOTE for: \"%s\"\n  URL: %s", pr.title, pr_url)
+			self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+		else:
+			self.logger.info("Would reset vote for \"%s\" because the PR has changed.\n  URL: %s", pr.title, pr_url)
+		return threads
 
 	def check_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diffs: list[FileDiff], rule: Rule, comment: Optional[str], comment_id: Optional[str], path_regex: re.Pattern):
 		match_found = False
