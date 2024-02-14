@@ -268,9 +268,7 @@ class Runner:
 		rules = self.config['rules']
 
 		user_id = self.config['user_id']
-		is_dry_run = self.config.get('is_dry_run', False)
-		if is_dry_run is None:
-			is_dry_run = False
+		is_dry_run = self.config.get('is_dry_run', False) or False
 
 		pr_author: IdentityRef = pr.created_by # type: ignore
 		reviewers: list[IdentityRefWithVote] = pr.reviewers # type: ignore
@@ -419,7 +417,7 @@ class Runner:
 		iterations: list[GitPullRequestIteration] = self.git_client.get_pull_request_iterations(repository_id, pr.pull_request_id, project=project, include_commits=False)
 		if len(iterations) == 0:
 			# There are no changes. Shouldn't happen.
-			# Maybe it can happen if someone removes commits?
+			# Maybe it can happen if someone removes commits or make a pull request with no commits?
 			return threads
 
 		iterations.sort(key=lambda i: i.updated_date) # type: ignore
@@ -432,11 +430,11 @@ class Runner:
 
 		# Find the latest thread where the user voted after the last iteration.
 		for t in threads:
-			last_updated_date = t.last_updated_date
-			if last_updated_date is None:
+			thread_last_updated_date = t.last_updated_date
+			if thread_last_updated_date is None:
 				# Should not happen.
 				continue
-			if last_updated_date <= last_iteration.updated_date:
+			if thread_last_updated_date <= last_iteration.updated_date:
 				# There are no more threads to check because the rest are before the last iteration.
 				break
 			if (comments := t.comments) is not None \
@@ -445,7 +443,7 @@ class Runner:
 					and (props := t.properties) is not None \
 					and (vote_result := props.get('CodeReviewVoteResult')) is not None \
 					and (vote := vote_result.get('$value')) is not None:
-				self.logger.debug("Found vote at %s > %s", last_updated_date, last_iteration.updated_date)
+				self.logger.debug("Found vote '%s' at %s > %s", vote, thread_last_updated_date, last_iteration.updated_date)
 				# We found a vote for the user after the last iteration so we don't need to reset the vote.
 				return threads
 
