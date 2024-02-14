@@ -56,7 +56,7 @@ Scopes:
 * Code: Full, Status
 * Project and Team: Read
 * User Profile: Read
-* Pull Request Threads: Read
+* Pull Request Threads: Read & Write
 
 ## Configuration File
 Rules are configured in a YAML file.

@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Optional, TypedDict
+from typing import Collection, Optional, TypedDict
 
 from jsonpath import JSONPath
 
@@ -123,7 +123,7 @@ class Config(TypedDict):
 
 	wait_after_review_s: Optional[int]
 
-	is_vote_reset_after_changes_enabled: Optional[bool]
+	reset_votes_after_changes: Optional[Collection[int]]
 
 	rules: list[Rule]
 	unique_path_regexs: set[re.Pattern]
