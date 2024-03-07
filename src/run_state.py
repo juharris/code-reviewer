@@ -1,7 +1,7 @@
 class RunState:
 	"""
 	Represents the state of the current iteration that goes through all rules for all pull requests.
-	Resets after going through all pull requests.
+	This is discarded after going through all pull requests.
 	"""
 
 	num_requeues: int = 0

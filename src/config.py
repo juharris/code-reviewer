@@ -91,6 +91,12 @@ class Rule(TypedDict):
 	and the comment will be edited (if necessary).
 	"""
 
+	comment_limit: Optional[int]
+	"""
+	The maximum number of times the `comment` can be posted on a pull request in one run of the script.
+	Overrides the more global `Config.same_comment_per_PR_per_run_limit` if set.
+	"""
+
 	new_title: Optional[str]
 	require: Optional[str | list[str]]
 	requeue: Optional[list[JsonPathCheck]]
@@ -118,6 +124,14 @@ class Config(TypedDict):
 	is_dry_run: Optional[bool]
 
 	log_level: Optional[str]
+
+	same_comment_per_PR_per_run_limit: int
+	"""
+	The maximum number of times the same comment can be posted on a pull request in one run of the script.
+	Helps avoid rate limiting or throttling.
+	Comments will be disambiguated by `Rule.comment_id` if set, otherwise, by `Rule.comment`.
+	Default is 20.
+	"""
 
 	requeue_config: Optional[RequeueConfig]
 

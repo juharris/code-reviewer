@@ -34,6 +34,7 @@ from comment_search import CommentSearchResult, get_comment_id_marker
 from config import (DEFAULT_MAX_REQUEUES_PER_RUN, Config, JsonPathCheck,
                     MatchType, PolicyEvaluationChecks, RequeueConfig, Rule)
 from file_diff import FileDiff
+from pr_review_state import PrReviewState
 from run_state import RunState
 from voting import (NO_VOTE, is_vote_allowed,
                     map_int_vote, map_vote)
@@ -124,6 +125,11 @@ class Runner:
 
 			log_level = logging.getLevelName(config.get('log_level', 'INFO') or 'INFO')
 			self.logger.setLevel(log_level)
+
+			limit = config.get('same_comment_per_PR_per_run_limit')
+			if limit is None:
+				# Match documented limit.
+				config['same_comment_per_PR_per_run_limit'] = 20
 
 			requeue_config = config.get('requeue_config')
 			if requeue_config is None:
@@ -262,7 +268,8 @@ class Runner:
 			self.display_stats()
 
 
-	def review_pr(self, pr: GitPullRequest, pr_url: str, state: RunState):
+	def review_pr(self, pr: GitPullRequest, pr_url: str, run_state: RunState):
+		pr_review_state = PrReviewState()
 		project = self.config['project']
 		repository_id = pr.repository.id # type: ignore
 		rules = self.config['rules']
@@ -346,7 +353,7 @@ class Runner:
 			comment_id = rule.get('comment_id')
 			path_regex = rule.get('path_regex')
 			if path_regex is not None:
-				match_found, threads = self.check_diff(pr, pr_url, project, is_dry_run, pr_author, threads, file_diffs, rule, comment, comment_id, path_regex)
+				match_found, threads = self.check_diff(pr, pr_url, project, is_dry_run, pr_author, threads, pr_review_state, file_diffs, rule, comment, comment_id, path_regex)
 
 			if not match_found:
 				continue
@@ -368,7 +375,7 @@ class Runner:
 				threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
 				existing_comment_info = self.find_comment(threads, comment, comment_id)
 				if existing_comment_info is None:
-					self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, comment_id=comment_id)
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, threads, pr_review_state, comment_id=comment_id)
 				else:
 					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
 
@@ -389,7 +396,7 @@ class Runner:
 				requeue_comment = rule.get('requeue_comment')
 				if requeue_comment is not None:
 					threads = threads or self.git_client.get_threads(repository_id, pr.pull_request_id, project=project)
-				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, requeue_comment, comment_id, state)
+				self.requeue_policy(pr, pr_url, project, is_dry_run, policy_evaluations, threads, requeue, rule, run_state, pr_review_state)
 
 			vote = rule.get('vote')
 			# Votes were converted when the config was loaded.
@@ -455,7 +462,7 @@ class Runner:
 			self.logger.info("Would reset vote for \"%s\" because the PR has changed.\n  URL: %s", pr.title, pr_url)
 		return threads
 
-	def check_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diffs: list[FileDiff], rule: Rule, comment: Optional[str], comment_id: Optional[str], path_regex: re.Pattern):
+	def check_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], pr_review_state: PrReviewState, file_diffs: list[FileDiff], rule: Rule, comment: Optional[str], comment_id: Optional[str], path_regex: re.Pattern):
 		match_found = False
 		diff_regex = rule.get('diff_regex')
 		for file_diff in file_diffs:
@@ -475,12 +482,12 @@ class Runner:
 						assert change_type == 1 or change_type == 3, f"Unexpected change type: {change_type}"
 						first_line_num = block['mLine']
 						for start_line_num, line in enumerate(block['mLines'], start=first_line_num):
-							local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
+							local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, diff_regex, file_diff, start_line_num, line)
 							match_found = match_found or local_match_found
 						
 						if diff_regex.flags & re.MULTILINE:
 							text = '\n'.join(block['mLines'])
-							local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, file_diff, text, comment, comment_id, diff_regex, first_line_num)
+							local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, file_diff, text, comment, comment_id, diff_regex, first_line_num)
 							match_found = match_found or local_match_found
 				if file_diff.contents is not None:
 					# Handle add.
@@ -488,11 +495,11 @@ class Runner:
 					# File line numbers are 1-based in the ADO API and UI.
 					first_line_num = 1
 					for start_line_num, line in enumerate(lines, first_line_num):
-						local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, diff_regex, file_diff, start_line_num, line)
+						local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, diff_regex, file_diff, start_line_num, line)
 						match_found = match_found or local_match_found
 					
 					if diff_regex.flags & re.MULTILINE:
-						local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, file_diff, file_diff.contents, comment, comment_id, diff_regex, first_line_num)
+						local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, file_diff, file_diff.contents, comment, comment_id, diff_regex, first_line_num)
 						match_found = match_found or local_match_found
 		return match_found, threads
 
@@ -593,28 +600,28 @@ class Runner:
 			return any(m is not None and pat.match(str(m)) for m in matches)
 		return True
 
-	def check_text_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], file_diff: FileDiff, text: str, comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, first_line_num: int):
+	def check_text_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author: IdentityRef, threads: Optional[list[GitPullRequestCommentThread]], rule: Rule, pr_review_state: PrReviewState, file_diff: FileDiff, text: str, comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, first_line_num: int):
 		match_found = False
 		for m in diff_regex.finditer(text):
 			start_line_num = first_line_num + text.count('\n', 0, m.start())
 			start_offset = m.start() - text.rfind('\n', 0, m.start())
 			end_line_num = start_line_num + text.count('\n', m.start(), m.end())
 			end_offset = m.end() - text.rfind('\n', 0, m.end())
-			local_match_found, threads = self.handle_diff_found(pr, pr_url, project,  is_dry_run, pr_author, threads, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
+			local_match_found, threads = self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
 			match_found = match_found or local_match_found
 		return match_found, threads
 
-	def check_line_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
+	def check_line_diff(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], rule: Rule, pr_review_state: PrReviewState, comment: Optional[str], comment_id: Optional[str], diff_regex: re.Pattern, file_diff: FileDiff, line_num: int, line: str):
 		match_found = False
 		if (m := diff_regex.match(line)):
 			self.logger.debug("Matched diff regex: %s for line \"%s\"\nURL: %s", diff_regex.pattern, line, pr_url)
 			# The docs say that the offsets are 0-based, but they seem to be 1-based.
 			# Need to add one for some reason, but it's not needed when commenting on multiple lines.
 			# Maybe the line starts with a newline when checking multiple lines?
-			return self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, comment, comment_id, file_diff, line_num, 1 + m.start(), line_num, 1 + m.end())
+			return self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, file_diff, line_num, 1 + m.start(), line_num, 1 + m.end())
 		return match_found, threads
 	
-	def handle_diff_found(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], comment: Optional[str], comment_id: Optional[str], file_diff: FileDiff, start_line_num: int, start_offset: int, end_line_num: int, end_offset: int):
+	def handle_diff_found(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], rule: Rule, pr_review_state: PrReviewState, comment: Optional[str], comment_id: Optional[str], file_diff: FileDiff, start_line_num: int, start_offset: int, end_line_num: int, end_offset: int):
 		repository_id = pr.repository.id # type: ignore
 		match_found = True
 		if comment is not None:
@@ -626,7 +633,7 @@ class Runner:
 				thread_context = CommentThreadContext(file_diff.path, 
 					right_file_start=CommentPosition(start_line_num, start_offset),
 					right_file_end=CommentPosition(end_line_num, end_offset))
-				self.send_comment(pr, pr_url, is_dry_run, pr_author, comment, threads, thread_context, comment_id=comment_id)
+				self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, threads, pr_review_state, thread_context, comment_id=comment_id)
 			else:
 				self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
 		return match_found, threads
@@ -756,7 +763,16 @@ class Runner:
 
 		return True
 
-	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, threads: list[GitPullRequestCommentThread], thread_context: Optional[CommentThreadContext]=None, status='active', comment_id: Optional[str] = None):
+	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, rule: Rule, comment: str, threads: list[GitPullRequestCommentThread], pr_review_state: PrReviewState, thread_context: Optional[CommentThreadContext]=None, status='active', comment_id: Optional[str] = None):
+		comment_count_limit = rule.get('comment_limit')
+		if comment_count_limit is None:
+			comment_count_limit = self.config['same_comment_per_PR_per_run_limit']
+		comment_count_key = comment_id or comment
+		current_count = pr_review_state.comment_counts.get(comment_count_key, 0)
+		if current_count >= comment_count_limit:
+			self.logger.debug("Skipping comment \"%s\" because the limit of %d comments has been reached for \"%s\".\n  URL: %s", comment, comment_count_limit, pr.title, pr_url)
+			return
+
 		if comment_id is not None:
 			comment += get_comment_id_marker(comment_id)
 		comment_ = Comment(content=comment)
@@ -765,11 +781,13 @@ class Runner:
 			self.logger.info("COMMENTING: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 			project = self.config['project']
 			repository_id = pr.repository.id # type: ignore
-			self.git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
+			thread = self.git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
 		else:
 			self.logger.info("Would comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 		threads.append(thread)
+
+		pr_review_state.comment_counts[comment_count_key] += 1
 
 	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, comment_id: Optional[str], existing_comment_info: CommentSearchResult, status='active'):
 		thread: GitPullRequestCommentThread = existing_comment_info.thread
@@ -828,14 +846,18 @@ class Runner:
 			self.logger.info("Would set title to: \"%s\" from \"%s\"\n%s", new_title, pr.title, pr_url)
 		pr.title = new_title
 
-	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], requeue_comment: Optional[str], comment_id: Optional[str], state: RunState):
+	def requeue_policy(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, policy_evaluations: list[dict], threads: Optional[list[GitPullRequestCommentThread]], requeue: list[JsonPathCheck], rule: Rule, run_state: RunState, pr_review_state: PrReviewState):
 		requeue_config = self.config['requeue_config']
 		assert requeue_config is not None
 		max_requeues_per_run = requeue_config['max_per_run']
 		assert max_requeues_per_run is not None
+
+		requeue_comment = rule.get('requeue_comment')
+		comment_id = rule.get('comment_id')
+
 		# Find the policy to requeue.
 		for policy_evaluation in policy_evaluations:
-			if state.num_requeues >= max_requeues_per_run:
+			if run_state.num_requeues >= max_requeues_per_run:
 				self.logger.debug("Not requeuing \"%s\" because the maximum number of requeues has been reached. URL: %s", pr.title, pr_url)
 				break
 			if all(self.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
@@ -851,12 +873,12 @@ class Runner:
 				else:
 					self.logger.info("Would requeue \"%s\" (%s) for \"%s\"\n%s", name, evaluation_id, pr.title, pr_url)
 
-				state.num_requeues += 1
+				run_state.num_requeues += 1
 
 				if requeue_comment is not None:
 					assert threads is not None, "`threads` must be provided to add a comment."
 					pr_author: IdentityRef = pr.created_by # type: ignore
-					self.send_comment(pr, pr_url, is_dry_run, pr_author, requeue_comment, threads, status='closed', comment_id=comment_id)
+					self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, requeue_comment, threads, pr_review_state, status='closed', comment_id=comment_id)
 
 
 def main():
