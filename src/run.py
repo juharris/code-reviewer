@@ -565,8 +565,11 @@ class Runner:
 		if policy_evaluations is None:
 			policy_evaluations_: list[PolicyEvaluationRecord] = self.policy_client.get_policy_evaluations(project, f'vstfs:///CodeReview/CodeReviewId/{project_id}/{pr.pull_request_id}')
 			policy_evaluations = [c.as_dict() for c in policy_evaluations_]
+			# Takes too much space in output. Feel free to temporarily uncomment for debugging.
+			"""
 			if self.logger.isEnabledFor(logging.DEBUG):
 				self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2), pr_url)
+			"""
 		all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
 		return all_rules_match, policy_evaluations
 
@@ -682,10 +685,12 @@ class Runner:
 						if change_type == 'edit, rename':
 							original_path = change['sourceServerItem']
 							modified_path = item['path']
-						self.logger.debug("Getting diff for \"%s\".", modified_path)
+						self.logger.debug("Getting '%s' diff for \"%s\".", change_type, modified_path)
 						# Use an undocumented API to get the diff.
 						# Found at https://stackoverflow.com/questions/41713616
-						diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=5&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.base_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
+						# Use `common_commit` instead of `base_commit` for the original version, otherwise if the PR is not up to date with the target branch, then the diff will make it look like the PR is trying to change more places because it looks like the PR is trying to reset sections that were already changed in the target branch.
+						# See https://github.com/juharris/code-reviewer/issues/28 for details.
+						diff_url =f'{organization_url}/{project}/_api/_versioncontrol/fileDiff?__v=7&diffParameters={{"originalPath":"{original_path}","originalVersion":"{diffs.common_commit}","modifiedPath":"{modified_path}","modifiedVersion":"{diffs.target_commit}","partialDiff":true,"includeCharDiffs":false}}&repositoryId={repository_id}'
 						diff_request = requests.get(diff_url, **self.rest_api_kwargs)
 						diff_request.raise_for_status()
 						diff = diff_request.json()
