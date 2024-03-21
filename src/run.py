@@ -782,13 +782,18 @@ class Runner:
 			comment += get_comment_id_marker(comment_id)
 		comment_ = Comment(content=comment)
 		thread = GitPullRequestCommentThread(comments=[comment_], status=status, thread_context=thread_context)
+
+		position_phrase = ""
+		if thread_context is not None:
+			position_phrase = f"\nOn lines {thread_context.right_file_start.line}-{thread_context.right_file_end.line} of file: {thread_context.file_path}"
+
 		if not is_dry_run:
-			self.logger.info("COMMENTING: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+			self.logger.info("COMMENTING: \"%s\"%s\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, position_phrase, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 			project = self.config['project']
 			repository_id = pr.repository.id # type: ignore
 			thread = self.git_client.create_thread(thread, repository_id, pr.pull_request_id, project=project)
 		else:
-			self.logger.info("Would comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+			self.logger.info("Would comment: \"%s\"%s\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, position_phrase, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
 		threads.append(thread)
 
