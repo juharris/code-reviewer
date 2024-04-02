@@ -302,7 +302,7 @@ class Runner:
 		# threads = self.delete_comments(pr, pr_url, project, repository_id, delete_comment)
 
 		if not is_dry_run and pr.status == 'completed':
-			# Don't comment on pull requests that are completed because the PR author likely won't action the comments
+			# Don't comment on pull requests that are completed because the PR author likely won't act on the comments
 			# anyway (and voting is disabled on completed PRs). But when debugging the rules, it's useful to see what
 			# the comments would have been.
 			return
