@@ -301,9 +301,10 @@ class Runner:
 		# delete_comment = "Automated comment: Please add a space after `//`."
 		# threads = self.delete_comments(pr, pr_url, project, repository_id, delete_comment)
 
-		if pr.status == 'completed':
-			# Don't comment on pull requests that are completed because the diff cannot be computed.
-			# Probably can't vote either.
+		if not is_dry_run and pr.status == 'completed':
+			# Don't comment on pull requests that are completed because the PR author likely won't act on the comments
+			# anyway (and voting is disabled on completed PRs). But when debugging the rules, it's useful to see what
+			# the comments would have been.
 			return
 		
 		policy_evaluations: Optional[list[dict]] = None
@@ -653,9 +654,12 @@ class Runner:
 			return result
 
 		# Get the files changed.
-		pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
-		pr_branch = urllib.parse.quote(pr_branch)
-		target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
+		if pr.status == 'completed':
+			target = GitTargetVersionDescriptor(target_version=latest_commit.commit_id, target_version_type='commit')
+		else:
+			pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
+			pr_branch = urllib.parse.quote(pr_branch)
+			target = GitTargetVersionDescriptor(target_version=pr_branch, target_version_type='branch')
 		# The branch to merge into.
 		base_branch = branch_pat.sub('', pr.target_ref_name) # type: ignore
 		base_branch = urllib.parse.quote(base_branch)
