@@ -140,7 +140,6 @@ class Config(TypedDict):
 	reset_votes_after_changes: Optional[Collection[int]]
 
 	rules: list[Rule]
-	unique_path_regexs: set[re.Pattern]
 
 	PAT: Optional[str]
 	user_id: str
