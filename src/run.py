@@ -139,8 +139,6 @@ class Runner:
 				if requeue_config.get('max_per_run') is None:
 					requeue_config['max_per_run'] = DEFAULT_MAX_REQUEUES_PER_RUN
 
-			unique_path_regexs = set()
-
 			reset_votes_after_changes = config.get('reset_votes_after_changes')
 			if reset_votes_after_changes is not None:
 				assert isinstance(reset_votes_after_changes, list), f"reset_votes_after_changes must be a list. Got: {reset_votes_after_changes} with type: {type(reset_votes_after_changes)}"
@@ -156,8 +154,7 @@ class Runner:
 				if (pat := rule.get('diff_pattern')) is not None:
 					rule['diff_regex'] = re.compile(pat, re.DOTALL)
 				if (pat := rule.get('path_pattern')) is not None:
-					p = rule['path_regex'] = re.compile(pat)
-					unique_path_regexs.add(p)
+					rule['path_regex'] = re.compile(pat)
 
 				vote = rule.get('vote')
 				if isinstance(vote, str):
@@ -180,8 +177,6 @@ class Runner:
 						check['json_path_'] = JSONPath(check['json_path'])
 						if (pat := check.get('pattern')) is not None:
 							check['regex'] = re.compile(pat)
-
-			config['unique_path_regexs'] = unique_path_regexs
 
 			self.config = config
 			self.config_hash = config_hash
@@ -649,8 +644,9 @@ class Runner:
 			self.logger.debug("Skipping checking diff for commit already seen (%s).", latest_commit)
 			return result
 
-		path_regexs = self.config['unique_path_regexs']
-		if len(path_regexs) == 0:
+		rules = self.config['rules']
+		if not any('path_pattern' in rule for rule in rules):
+			# We don't need any diffs.
 			return result
 
 		# Get the files changed.
@@ -669,6 +665,7 @@ class Runner:
 		project = self.config['project']
 		repository_id = pr.repository.id # type: ignore
 
+		self.logger.debug("Getting diffs.")
 		diffs: GitCommitDiffs = self.git_client.get_commit_diffs(repository_id, project, diff_common_commit=True, base_version_descriptor=base, target_version_descriptor=target, top=100000)
 		changes: list[dict] = diffs.changes # type: ignore
 
@@ -681,7 +678,18 @@ class Runner:
 			if not item.get('isFolder'):
 				original_path = item['path']
 				modified_path = change.get('sourceServerItem', original_path)
-				if not any(regex.match(modified_path) for regex in path_regexs):
+
+				is_diff_needed = False
+				for rule in rules:
+					if 'diff_pattern' in rule \
+						and (path_regex := rule.get('path_regex')) is not None \
+						and (path_regex.match(modified_path) or path_regex.match(original_path)):
+							is_diff_needed = True
+							break
+
+				if not is_diff_needed:
+					# We don't need the contents, but we still need to track the files changed for rules just based on the files.
+					result.append(FileDiff(change_type, modified_path, original_path=original_path))
 					continue
 
 				try:
