@@ -53,11 +53,15 @@ class Suggestion(TypedDict):
 	"""
 	A suggestion for a modification when a rule matches.
 	"""
+
 	pattern: str
 	"""
 	A pattern to match in the diff.
 	"""
+
 	pattern_regex: re.Pattern
+	""" Internal """
+
 	replacement: str
 	"""
 	The replacement for the pattern.
