@@ -49,6 +49,23 @@ class PolicyEvaluationChecks(TypedDict):
 	evaluation_checks: list[JsonPathCheck]
 
 
+class Suggestion(TypedDict):
+	"""
+	A suggestion for a modification when a rule matches.
+	"""
+	pattern: str
+	"""
+	A pattern to match in the diff.
+	"""
+	pattern_regex: re.Pattern
+	replacement: str
+	"""
+	The replacement for the pattern.
+	Python regex style substitution is supported.
+	For example: TODO Add examples.
+	"""
+
+
 class Rule(TypedDict):
 	# Checks (in alphabetical order)
 	author_pattern: Optional[str]
@@ -109,6 +126,7 @@ class Rule(TypedDict):
 	"""
 	vote: Optional[int | str]
 
+	suggestions: Optional[list[Suggestion]]
 
 class Config(TypedDict):
 	organization_url: str
