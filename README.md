@@ -5,6 +5,7 @@ The script can be configured to run in a loop and wait a certain amount of time 
 
 ## Examples:
 * Block code that matches patterns that are hard to check with static analysis tools and comment directly on matching lines.
+* Suggest changes in comments.
 * Reactivate a comment thread if the code matches a pattern.
 * Require a reviewer based on the title of a pull request.
 * Add a team as an optional reviewer based on the author of a pull request.
@@ -32,6 +33,7 @@ See the documentation and examples below for more details.
 If all of the checks in a rule match, then the actions associated with the rule will run.
 Supported actions:
 * comment (on the PR overview or a line)
+* add suggestions with comments
 * add optional reviewers
 * add tags
 * update the title
@@ -168,6 +170,9 @@ wait_after_review_s: 666
 
 # * require (string or list[string]): The ID of someone or a team to require. A list of IDs is also supported.
 
+# * suggestions (list[{ pattern: string, replacement: string }]): Add a suggestion to a comment.
+# When a `comment` is provided, patterns and replacements can be provided to help convert the matching line and dynamically build a suggestion.
+
 # * vote (int): The vote to give if the rule matches.
 
 # Requeuing
@@ -204,6 +209,18 @@ rules:
   - description_pattern: '^.*DELETE THESE COMMENTS'
     comment: "Please remove the comments in the description that should be removed, as they explain. Otherwise, they will appear in email notifications and in the commit once the pull request has been merged."
     vote: REJECT
+
+  # Check for trailing whitespace and add a suggestion for how to remove it.
+  - path_pattern: '^.*\.(?:cs|csproj|ini|java|jsx?|md|py|tsx?)$'
+    diff_pattern: '\s+$'
+    vote: wait
+    comment: ":robot: Automated comment: Please remove the trailing whitespace in order to simplify the change and ensure that future automated formatting does not change this line."
+    comment_id: "remove trailing whitespace"
+    is_draft: false
+    merge_status_pattern: '(?i)^(?!conflicts)'
+    suggestions:
+      - pattern: '^(?P<pre>.*?)\s+$'
+        replacement: '\g<pre>'
 
   # Avoid `string.IsNullOrEmpty` in C#.
   - path_pattern: '^.*\.cs$'

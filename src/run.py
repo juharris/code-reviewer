@@ -1,6 +1,5 @@
 import datetime
 import hashlib
-import json
 import logging
 import os
 import pathlib
@@ -36,8 +35,8 @@ from config import (DEFAULT_MAX_REQUEUES_PER_RUN, Config, JsonPathCheck,
 from file_diff import FileDiff
 from pr_review_state import PrReviewState
 from run_state import RunState
-from voting import (NO_VOTE, is_vote_allowed,
-                    map_int_vote, map_vote)
+from suggestions.suggester import Suggester
+from voting import NO_VOTE, is_vote_allowed, map_int_vote, map_vote
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
 
@@ -56,12 +55,17 @@ ADO_REST_API_AUTH_SCOPE = '499b84ac-1321-427f-aa17-267ca6975798/.default'
 class Runner:
 	config: Config
 	config_hash: Optional[str] = None
+	suggester: Suggester
+
 	git_client: GitClient
 	policy_client: PolicyClient
 	rest_api_kwargs: dict[str, Any]
 
 	def __init__(self, config_source: str) -> None:
 		self.config_source = config_source
+
+		self.suggester = Suggester()
+
 		self.logger = logging.getLogger(__name__)
 		self.logger.setLevel(logging.INFO)
 		f = logging.Formatter('%(asctime)s [%(levelname)s] - %(name)s:%(filename)s:%(funcName)s\n%(message)s')
@@ -177,6 +181,8 @@ class Runner:
 						check['json_path_'] = JSONPath(check['json_path'])
 						if (pat := check.get('pattern')) is not None:
 							check['regex'] = re.compile(pat)
+
+				Suggester.load_suggestions(rule)
 
 			self.config = config
 			self.config_hash = config_hash
@@ -373,7 +379,7 @@ class Runner:
 				if existing_comment_info is None:
 					self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, threads, pr_review_state, comment_id=comment_id)
 				else:
-					self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
+					self.update_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, comment_id, existing_comment_info)
 
 			if optional_reviewers is not None:
 				self.add_optional_reviewers(pr, pr_url, project, pr_author, is_dry_run, reviewers, optional_reviewers)
@@ -606,7 +612,7 @@ class Runner:
 			start_offset = m.start() - text.rfind('\n', 0, m.start())
 			end_line_num = start_line_num + text.count('\n', m.start(), m.end())
 			end_offset = m.end() - text.rfind('\n', 0, m.end())
-			local_match_found, threads = self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
+			local_match_found, threads = self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, text, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
 			match_found = match_found or local_match_found
 		return match_found, threads
 
@@ -617,10 +623,10 @@ class Runner:
 			# The docs say that the offsets are 0-based, but they seem to be 1-based.
 			# Need to add one for some reason, but it's not needed when commenting on multiple lines.
 			# Maybe the line starts with a newline when checking multiple lines?
-			return self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, file_diff, line_num, 1 + m.start(), line_num, 1 + m.end())
+			return self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, line, comment, comment_id, file_diff, line_num, 1 + m.start(), line_num, 1 + m.end())
 		return match_found, threads
 	
-	def handle_diff_found(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], rule: Rule, pr_review_state: PrReviewState, comment: Optional[str], comment_id: Optional[str], file_diff: FileDiff, start_line_num: int, start_offset: int, end_line_num: int, end_offset: int):
+	def handle_diff_found(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], rule: Rule, pr_review_state: PrReviewState, text: str, comment: Optional[str], comment_id: Optional[str], file_diff: FileDiff, start_line_num: int, start_offset: int, end_line_num: int, end_offset: int):
 		repository_id = pr.repository.id # type: ignore
 		match_found = True
 		if comment is not None:
@@ -632,9 +638,9 @@ class Runner:
 				thread_context = CommentThreadContext(file_diff.path, 
 					right_file_start=CommentPosition(start_line_num, start_offset),
 					right_file_end=CommentPosition(end_line_num, end_offset))
-				self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, threads, pr_review_state, thread_context, comment_id=comment_id)
+				self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, threads, pr_review_state, thread_context, comment_id=comment_id, text=text)
 			else:
-				self.update_comment(pr, pr_url, is_dry_run, pr_author, comment, comment_id, existing_comment_info)
+				self.update_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, comment_id, existing_comment_info, text=text)
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
@@ -651,7 +657,8 @@ class Runner:
 
 		# Get the files changed.
 		if pr.status == 'completed':
-			target = GitTargetVersionDescriptor(target_version=latest_commit.commit_id, target_version_type='commit')
+			target_version = latest_commit.commit_id # type: ignore
+			target = GitTargetVersionDescriptor(target_version=target_version, target_version_type='commit')
 		else:
 			pr_branch = branch_pat.sub('', pr.source_ref_name) # type: ignore
 			pr_branch = urllib.parse.quote(pr_branch)
@@ -780,7 +787,7 @@ class Runner:
 
 		return True
 
-	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, rule: Rule, comment: str, threads: list[GitPullRequestCommentThread], pr_review_state: PrReviewState, thread_context: Optional[CommentThreadContext]=None, status='active', comment_id: Optional[str] = None):
+	def send_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, rule: Rule, comment: str, threads: list[GitPullRequestCommentThread], pr_review_state: PrReviewState, thread_context: Optional[CommentThreadContext]=None, status='active', comment_id: Optional[str]=None, text: Optional[str]=None):
 		comment_count_limit = rule.get('comment_limit')
 		if comment_count_limit is None:
 			comment_count_limit = self.config['same_comment_per_PR_per_run_limit']
@@ -790,6 +797,11 @@ class Runner:
 			self.logger.debug("Skipping comment \"%s\" because the limit of %d comments has been reached for \"%s\".\n  URL: %s", comment, comment_count_limit, pr.title, pr_url)
 			return
 
+		if text is not None:
+			suggestion = self.suggester.get_suggestion(text, rule)
+			if suggestion is not None:
+				comment += suggestion
+
 		if comment_id is not None:
 			comment += get_comment_id_marker(comment_id)
 		comment_ = Comment(content=comment)
@@ -797,7 +809,13 @@ class Runner:
 
 		position_phrase = ""
 		if thread_context is not None:
-			position_phrase = f"\nOn lines {thread_context.right_file_start.line}-{thread_context.right_file_end.line} of file: {thread_context.file_path}"
+			start_line = thread_context.right_file_start.line # type: ignore
+			end_line = thread_context.right_file_end.line # type: ignore
+			position_phrase = f"\nFile: '{thread_context.file_path}' on line"
+			if start_line != end_line:
+				position_phrase += f"s {start_line}-{end_line}"
+			else:
+				position_phrase += f" {start_line}"
 
 		if not is_dry_run:
 			self.logger.info("COMMENTING: \"%s\"%s\nTitle: \"%s\"\nBy %s (%s)\n%s", comment, position_phrase, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
@@ -811,7 +829,7 @@ class Runner:
 
 		pr_review_state.comment_counts[comment_count_key] += 1
 
-	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, comment: str, comment_id: Optional[str], existing_comment_info: CommentSearchResult, status='active'):
+	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, rule: Rule, comment: str, comment_id: Optional[str], existing_comment_info: CommentSearchResult, status='active', text: Optional[str]=None):
 		thread: GitPullRequestCommentThread = existing_comment_info.thread
 		existing_comment: Comment = existing_comment_info.comment
 
@@ -826,6 +844,10 @@ class Runner:
 			else:
 				self.logger.info("Would update thread status: \"%s\" for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
+		if text is not None:
+			suggestion = self.suggester.get_suggestion(text, rule)
+			if suggestion is not None:
+				comment += suggestion
 		if comment_id is not None:
 			comment += get_comment_id_marker(comment_id)
 		if existing_comment.content != comment:

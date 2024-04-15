@@ -130,7 +130,12 @@ class Rule(TypedDict):
 	"""
 	vote: Optional[int | str]
 
+	# TODO Think about handling multiple suggestion blocks in one comment since right now all suggestions will create one block.
 	suggestions: Optional[list[Suggestion]]
+	"""
+	Suggestions for changing the matching line(s).
+	All suggestions will get applied to the current line, looping until there are no more suggestions to apply.
+	"""
 
 class Config(TypedDict):
 	organization_url: str
