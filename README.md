@@ -219,8 +219,18 @@ rules:
     is_draft: false
     merge_status_pattern: '(?i)^(?!conflicts)'
     suggestions:
-      - pattern: '^(?P<pre>.*?)\s+$'
-        replacement: '\g<pre>'
+      - pattern: '^(?P<PRE>.*?)\s+$'
+        replacement: '\g<PRE>'
+
+  # Check for the expected value going first in C# tests.
+  - comment_id: "expected value should go first"
+    vote: wait
+    path_pattern: '^/.*Tests?\.cs$'
+    diff_pattern: '^\s*Assert\.AreEqual\([^,]+,\s*(\d+|true|false|"[^,]*"|(?:MyEnum|YourEnum)\.[^,]+)(,\s*"[^,]*")?\);'
+    comment: ":robot: Automated comment: The expected value should go first. The order is important as values get inserted into an error message template if the test fails which we would see in CI. It's important for the error message to be clear to someone else debugging why tests failed."
+    suggestions:
+      - pattern: '^(?P<PRE>\s*)Assert\.AreEqual\((?P<ACTUAL>[^,]+),\s*(?P<EXPECTED>\d+|true|false|"[^,]*"|(?:MyEnum|YourEnum)\.[^,]+)(?P<ERROR_INFO>,\s*"[^,]*")?\);'
+        replacement: '\g<PRE>Assert.AreEqual(\g<EXPECTED>, \g<ACTUAL>\g<ERROR_INFO>);'
 
   # Avoid `string.IsNullOrEmpty` in C#.
   - path_pattern: '^.*\.cs$'
