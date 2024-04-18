@@ -19,7 +19,7 @@ class Suggester:
 		if suggestion is None:
 			return ""
 		else:
-			return f"\n\n```suggestion{suggestion.suggestion}```"
+			return f"\n\n```suggestion\n{suggestion.suggestion}\n```"
 
 	def suggest(self, text: str, rule: Rule) -> Optional[SuggestedChange]:
 		suggestions = rule.get('suggestions')
