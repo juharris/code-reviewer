@@ -63,6 +63,22 @@ def test_suggest_trim_group_name():
 	_test(expected, text, rule)
 
 
+def test_suggest_trim_only_end():
+	text = "code code\t \t "
+	expected = "code code"
+
+	rule: Rule = {
+		'suggestions': [
+			{
+				'pattern': '\\s+$',
+				'replacement': ''
+			}
+		]
+	} # type: ignore
+
+	_test(expected, text, rule)
+
+
 def test_suggest_pattern_inside():
 	text = "code A B C"
 	expected = "code D B C"
