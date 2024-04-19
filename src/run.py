@@ -1,5 +1,4 @@
 import datetime
-import hashlib
 import logging
 import os
 import pathlib
@@ -8,10 +7,10 @@ import sys
 import time
 import urllib.parse
 from collections import Counter
+from dataclasses import dataclass, field
 from typing import Any, Collection, Optional
 
 import requests
-import yaml
 from azure.devops.connection import Connection
 from azure.devops.released.git import (Comment, CommentPosition,
                                        CommentThreadContext,
@@ -30,21 +29,19 @@ from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
-from config import (DEFAULT_MAX_REQUEUES_PER_RUN, Config, JsonPathCheck,
-                    MatchType, PolicyEvaluationChecks, RequeueConfig, Rule)
+from config import (ATTRIBUTES_WITH_PATTERNS, Config, ConfigLoader,
+                    JsonPathCheck, MatchType, PolicyEvaluationChecks, Rule)
 from file_diff import FileDiff
 from pr_review_state import PrReviewState
 from run_state import RunState
-from suggestions.suggester import Suggester
-from voting import NO_VOTE, is_vote_allowed, map_int_vote, map_vote
+from suggestions import Suggester
+from voting import NO_VOTE, is_vote_allowed, map_int_vote
 
 # See https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP for help with what's possible.
 
 branch_pat = re.compile('^refs/heads/')
 
 log_start = "*" * 100
-attributes_with_patterns = ('description', 'merge_status', 'source_ref_name', 'target_ref_name', 'title')
-pr_url_to_latest_commit_seen = {}
 
 POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
 
@@ -52,26 +49,17 @@ POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
 ADO_REST_API_AUTH_SCOPE = '499b84ac-1321-427f-aa17-267ca6975798/.default'
 
 
+@dataclass
 class Runner:
-	config: Config
-	config_hash: Optional[str] = None
+	config_loader: ConfigLoader
+	logger: logging.Logger
 	suggester: Suggester
 
-	git_client: GitClient
-	policy_client: PolicyClient
-	rest_api_kwargs: dict[str, Any]
-
-	def __init__(self, config_source: str) -> None:
-		self.config_source = config_source
-
-		self.suggester = Suggester()
-
-		self.logger = logging.getLogger(__name__)
-		self.logger.setLevel(logging.INFO)
-		f = logging.Formatter('%(asctime)s [%(levelname)s] - %(name)s:%(filename)s:%(funcName)s\n%(message)s')
-		h = logging.StreamHandler()
-		h.setFormatter(f)
-		self.logger.addHandler(h)
+	config: Config = field(init=False)
+	git_client: GitClient = field(init=False)
+	policy_client: PolicyClient = field(init=False)
+	rest_api_kwargs: dict[str, Any] = field(init=False)
+	pr_url_to_latest_commit_seen: dict[str, str] = field(default={}, init=False)
 
 	def run(self) -> None:
 		# Log the docker image build timestamp for easier debugging.
@@ -79,7 +67,10 @@ class Runner:
 
 		while True:
 			try:
-				self.load_config()
+				reload_info = self.config_loader.load_config()
+				self.config = reload_info.config
+				if reload_info.is_fresh:
+					self.pr_url_to_latest_commit_seen.clear()
 
 				state = RunState()
 				self.review_prs(state)
@@ -101,94 +92,6 @@ class Runner:
 				docker_image_build_timestamp = f.read().strip()
 				self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
 						f" | Docker Image Build Date: {docker_image_build_timestamp}")
-
-	def load_config(self) -> None:
-		config_contents: Optional[str] = None
-		if self.config_source.startswith('https://') or self.config_source.startswith('http://'):
-			max_num_tries = 3
-			for try_num in range(max_num_tries):
-				try:
-					r = requests.get(self.config_source)
-					r.raise_for_status()
-					config_contents = r.text
-					break
-				except:
-					if try_num == max_num_tries - 1:
-						raise
-					self.logger.exception(f"Error while downloading config from '{self.config_source}'.")
-					time.sleep(1 + try_num * 2)
-		else:
-			with open(self.config_source, 'r', encoding='utf-8') as f:
-				config_contents = f.read()
-
-		assert config_contents is not None
-		config_hash = hashlib.sha256(config_contents.encode('utf-8')).hexdigest()
-		if config_hash != self.config_hash:
-			self.logger.info("Loading configuration from '%s'.", self.config_source)
-			config: Config = yaml.safe_load(config_contents)
-
-			log_level = logging.getLevelName(config.get('log_level', 'INFO') or 'INFO')
-			self.logger.setLevel(log_level)
-
-			limit = config.get('same_comment_per_PR_per_run_limit')
-			if limit is None:
-				# Match documented limit.
-				config['same_comment_per_PR_per_run_limit'] = 20
-
-			requeue_config = config.get('requeue_config')
-			if requeue_config is None:
-				requeue_config = RequeueConfig(max_per_run=DEFAULT_MAX_REQUEUES_PER_RUN)
-				config['requeue_config'] = requeue_config
-			else:
-				if requeue_config.get('max_per_run') is None:
-					requeue_config['max_per_run'] = DEFAULT_MAX_REQUEUES_PER_RUN
-
-			reset_votes_after_changes = config.get('reset_votes_after_changes')
-			if reset_votes_after_changes is not None:
-				assert isinstance(reset_votes_after_changes, list), f"reset_votes_after_changes must be a list. Got: {reset_votes_after_changes} with type: {type(reset_votes_after_changes)}"
-				reset_votes_after_changes = set(map_vote(vote) for vote in reset_votes_after_changes)
-				assert all(vote is not None for vote in reset_votes_after_changes), f"reset_votes_after_changes must be a list of integers. Got: {reset_votes_after_changes}"
-				config['reset_votes_after_changes'] = reset_votes_after_changes # type: ignore
-
-			rules = config['rules']
-			for rule in rules:
-				for name in ('author',) + attributes_with_patterns:
-					if pat := rule.get(f'{name}_pattern'):
-						rule[f'{name}_regex'] = re.compile(pat, re.DOTALL) # type: ignore
-				if (pat := rule.get('diff_pattern')) is not None:
-					rule['diff_regex'] = re.compile(pat, re.DOTALL)
-				if (pat := rule.get('path_pattern')) is not None:
-					rule['path_regex'] = re.compile(pat)
-
-				vote = rule.get('vote')
-				if isinstance(vote, str):
-					rule['vote'] = map_vote(vote)
-
-				if (rule_policy_checks := rule.get('policy_checks')) is not None:
-					for rule_policy_check in rule_policy_checks:
-						for evaluation_check in rule_policy_check['evaluation_checks']:
-							evaluation_check['json_path_'] = JSONPath(evaluation_check['json_path'])
-							if (pat := evaluation_check.get('pattern')) is not None:
-								evaluation_check['regex'] = re.compile(pat)
-						match_type = rule_policy_check.get('match_type')
-						if match_type is None:
-							rule_policy_check['match_type'] = MatchType.ANY
-						else:
-							rule_policy_check['match_type'] = MatchType(match_type)
-
-				if (requeue := rule.get('requeue')) is not None:
-					for check in requeue:
-						check['json_path_'] = JSONPath(check['json_path'])
-						if (pat := check.get('pattern')) is not None:
-							check['regex'] = re.compile(pat)
-
-				Suggester.load_suggestions(rule)
-
-			self.config = config
-			self.config_hash = config_hash
-			pr_url_to_latest_commit_seen.clear()
-
-			self.logger.info("Loaded configuration with %d rule(s).", len(rules))
 
 	def _make_comment_stat_key(self, comment: Comment) -> tuple:
 		author: IdentityRef = comment.author # type: ignore
@@ -261,7 +164,7 @@ class Runner:
 
 				# Only acknowledge reviewing after successfully going through all rules.
 				# This could help to get around rate limiting.
-				pr_url_to_latest_commit_seen[pr_url] = pr.last_merge_source_commit
+				self.pr_url_to_latest_commit_seen[pr_url] = pr.last_merge_source_commit # type: ignore
 			except:
 				self.logger.exception(f"Error while reviewing pull request called \"{pr.title}\" at {pr_url}")
 
@@ -325,7 +228,7 @@ class Runner:
 					continue
 
 			match_found = True
-			for name in attributes_with_patterns:
+			for name in ATTRIBUTES_WITH_PATTERNS:
 				if (regex := rule.get(f'{name}_regex')) is not None:
 					val = getattr(pr, name)
 					if val is not None and not regex.match(val):
@@ -646,7 +549,7 @@ class Runner:
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
 		result = []
 		latest_commit = pr.last_merge_source_commit
-		if latest_commit == pr_url_to_latest_commit_seen.get(pr_url):
+		if latest_commit == self.pr_url_to_latest_commit_seen.get(pr_url):
 			self.logger.debug("Skipping checking diff for commit already seen (%s).", latest_commit)
 			return result
 
@@ -926,8 +829,14 @@ class Runner:
 
 
 def main():
+	from logger import LoggingModule
+
 	config_source = sys.argv[1]
-	runner = Runner(config_source)
+	# TODO Use injector.
+	logger = LoggingModule().provide_logger()
+	config_loader = ConfigLoader(config_source, logger)
+	suggester = Suggester()
+	runner = Runner(config_loader, logger, suggester)
 	runner.run()
 
 

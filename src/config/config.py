@@ -6,6 +6,7 @@ from jsonpath import JSONPath
 
 DEFAULT_MAX_REQUEUES_PER_RUN = 10
 
+ATTRIBUTES_WITH_PATTERNS = ('description', 'merge_status', 'source_ref_name', 'target_ref_name', 'title')
 
 class RequeueConfig(TypedDict):
 	max_per_run: Optional[int]
