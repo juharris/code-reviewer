@@ -63,6 +63,22 @@ def test_suggest_trim_group_name():
 	_test(expected, text, rule)
 
 
+def test_suggest_pattern_inside():
+	text = "code A B C"
+	expected = "code D B C"
+
+	rule: Rule = {
+		'suggestions': [
+			{
+				'pattern': 'A',
+				'replacement': 'D'
+			}
+		]
+	} # type: ignore
+
+	_test(expected, text, rule)
+
+
 def test_multiple_suggestions():
 	text = "code for api that makes api good  "
 	expected = "code for API that makes API good"

@@ -28,14 +28,19 @@ class Suggester:
 
 		is_change_made = False
 		suggestion = text
+
+		# Keep applying suggestions until no more changes are made.
 		while True:
 			found_matches = False
 			for suggestion_config in suggestions:
 				p = suggestion_config['pattern_regex']
-				while p.match(suggestion):
-					replacement = suggestion_config['replacement']
-					suggestion = p.sub(replacement, suggestion)
-					is_change_made = found_matches = True
+				replacement = suggestion_config['replacement']
+				while True:
+					suggestion, num_substitutions = p.subn(replacement, suggestion)
+					if num_substitutions > 0:
+						is_change_made = found_matches = True
+					else:
+						break
 			if not found_matches:
 				break
 
