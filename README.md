@@ -219,8 +219,8 @@ rules:
     is_draft: false
     merge_status_pattern: '(?i)^(?!conflicts)'
     suggestions:
-      - pattern: '^(?P<PRE>.*?)\s+$'
-        replacement: '\g<PRE>'
+      - pattern: '\s+$',
+        replacement: ''
 
   # Check for the expected value going first in C# tests.
   - comment_id: "expected value should go first"

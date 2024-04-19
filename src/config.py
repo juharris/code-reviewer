@@ -66,7 +66,6 @@ class Suggestion(TypedDict):
 	"""
 	The replacement for the pattern.
 	Python regex style substitution is supported.
-	For example: TODO Add examples.
 	"""
 
 
@@ -130,7 +129,6 @@ class Rule(TypedDict):
 	"""
 	vote: Optional[int | str]
 
-	# TODO Think about handling multiple suggestion blocks in one comment since right now all suggestions will create one block.
 	suggestions: Optional[list[Suggestion]]
 	"""
 	Suggestions for changing the matching line(s).
