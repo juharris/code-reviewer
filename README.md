@@ -219,7 +219,7 @@ rules:
     is_draft: false
     merge_status_pattern: '(?i)^(?!conflicts)'
     suggestions:
-      - pattern: '\s+$',
+      - pattern: '\s+$'
         replacement: ''
 
   # Check for the expected value going first in C# tests.
