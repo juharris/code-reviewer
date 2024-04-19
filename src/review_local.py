@@ -13,7 +13,8 @@ class LocalReviewer:
 	suggester: Suggester
 
 	def run(self):
-		pass
+		config = self.config_loader.load_config().config
+		# TODO Loop over local files in the desired folders or names.
 
 
 def main():
