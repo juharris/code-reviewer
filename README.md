@@ -329,6 +329,8 @@ rules:
 ```
 
 # Running
+
+## Checking Pull Requests
 Run the script:
 ```bash
 CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
@@ -341,6 +343,12 @@ CR_ADO_PAT='YOUR PAT' python src/run.py https://mysite.com/config.yml
 
 The script will reload the config file for each run.
 A run happens when the script is started and then every `wait_after_review_s` seconds.
+
+## Checking Local Files
+You can also check local files:
+```bash
+python src/review_local.py --config_source my_config.yaml `git ls-files`
+```
 
 # Testing
 
