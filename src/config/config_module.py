@@ -14,7 +14,7 @@ class ConfigModule(Module):
 	@singleton
 	def provide_config_loader(self, builder: ClassAssistedBuilder[ConfigLoader]) -> ConfigLoader:
 		return builder.build(config_source=self.config_source)
-	
+
 	@provider
 	@singleton
 	def provide_config(self, loader: ConfigLoader) -> Config:

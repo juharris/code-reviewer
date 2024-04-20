@@ -16,7 +16,7 @@ class Block(TypedDict):
 	mLines: list[str]
 	mLine: int
 	mLinesCount: int
-	
+
 	oLine: int
 	oLines: list[str]
 	oLinesCount: int

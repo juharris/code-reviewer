@@ -31,7 +31,7 @@ class LocalReviewer:
 		assert rules is not None
 		for rule in rules:
 			self.run_rule_for_file(path, rule)
-			
+
 	def run(self, paths: Collection[str]) -> None:
 		paths = self.get_files(paths)
 		for path in tqdm(paths,
@@ -39,11 +39,27 @@ class LocalReviewer:
 			unit_scale=True, mininterval=2, unit=" files"
 		):
 			self.review_file(path)
+		# TODO Show all errors and exit depending on the severity level.
 
-		
-	def run_rule_for_file(self, path: str, rule: Rule):
-		# TODO
-		pass
+
+	def run_rule_for_file(self, path: str, rule: Rule) -> None:
+		# TODO Collect error status
+		p = rule.get('path_regex')
+		if p is not None and not p.match(path):
+			return
+		diff_regex = rule.get('diff_regex')
+		if diff_regex is not None:
+			comment = rule.get('comment', "")
+			# Purposely assume and enforce a sane encoding for now.
+			# Can revisit later.
+			# TODO Avoid re-opening the file for each rule.
+			with open(path, 'r', encoding='utf8') as f:
+				for line_num, line in enumerate(f, start=1):
+					line = line.rstrip('\r\n')
+					# TODO If the regex is multiline, we need to use finditer.
+					if diff_regex.match(line):
+						# TODO Check vote to determine the log level.
+						self.logger.info("%s (%d): \"%s\" matches '%s'.\n%s", path, line_num, line, diff_regex.pattern, comment)
 
 
 def main():

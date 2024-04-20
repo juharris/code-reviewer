@@ -10,7 +10,7 @@ same_comment_per_PR_per_run_limit: 11
 rules:
   # Check for trailing whitespace and add a suggestion for how to remove it.
   - path_pattern: '^.'
-    diff_pattern: '\s+$'
+    diff_pattern: '^.*\s+$'
     vote: REJECT
     comment: ":robot: Automated comment: Please remove the trailing whitespace in order to simplify the change and ensure that future automated formatting does not change this line."
     comment_id: "remove trailing whitespace"

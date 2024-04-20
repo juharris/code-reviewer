@@ -105,7 +105,7 @@ class Runner:
 			for comment in comments:
 				if not comment.is_deleted:
 					self.comment_stats[self._make_comment_stat_key(comment)] += 1
-	
+
 	def display_stats(self) -> None:
 		if self.logger.isEnabledFor(logging.INFO) and len(self.comment_stats) > 0:
 			s = f"{log_start}\nComment stats:\nCount | Author & Comment Type\n"
@@ -212,7 +212,7 @@ class Runner:
 			# anyway (and voting is disabled on completed PRs). But when debugging the rules, it's useful to see what
 			# the comments would have been.
 			return
-		
+
 		policy_evaluations: Optional[list[dict]] = None
 		file_diffs = self.get_diffs(pr, pr_url)
 
@@ -391,7 +391,7 @@ class Runner:
 						for start_line_num, line in enumerate(block['mLines'], start=first_line_num):
 							local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, diff_regex, file_diff, start_line_num, line)
 							match_found = match_found or local_match_found
-						
+
 						if diff_regex.flags & re.MULTILINE:
 							text = '\n'.join(block['mLines'])
 							local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, file_diff, text, comment, comment_id, diff_regex, first_line_num)
@@ -404,7 +404,7 @@ class Runner:
 					for start_line_num, line in enumerate(lines, first_line_num):
 						local_match_found, threads = self.check_line_diff(pr, pr_url, project,  is_dry_run, pr_author, threads, rule, pr_review_state, comment, comment_id, diff_regex, file_diff, start_line_num, line)
 						match_found = match_found or local_match_found
-					
+
 					if diff_regex.flags & re.MULTILINE:
 						local_match_found, threads = self.check_text_diff(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, file_diff, file_diff.contents, comment, comment_id, diff_regex, first_line_num)
 						match_found = match_found or local_match_found
@@ -530,7 +530,7 @@ class Runner:
 			# Maybe the line starts with a newline when checking multiple lines?
 			return self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, line, comment, comment_id, file_diff, line_num, 1 + m.start(), line_num, 1 + m.end())
 		return match_found, threads
-	
+
 	def handle_diff_found(self, pr: GitPullRequest, pr_url: str, project: str, is_dry_run: bool, pr_author, threads: Optional[list[GitPullRequestCommentThread]], rule: Rule, pr_review_state: PrReviewState, text: str, comment: Optional[str], comment_id: Optional[str], file_diff: FileDiff, start_line_num: int, start_offset: int, end_line_num: int, end_offset: int):
 		repository_id = pr.repository.id # type: ignore
 		match_found = True
@@ -540,7 +540,7 @@ class Runner:
 			if existing_comment_info is None:
 				# Docs say the character indices are 0-based, but they seem to be 1-based.
 				# When 0 is given, the context of the line is hidden in the Overview.
-				thread_context = CommentThreadContext(file_diff.path, 
+				thread_context = CommentThreadContext(file_diff.path,
 					right_file_start=CommentPosition(start_line_num, start_offset),
 					right_file_end=CommentPosition(end_line_num, end_offset))
 				self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, threads, pr_review_state, thread_context, comment_id=comment_id, text=text)
