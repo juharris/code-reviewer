@@ -25,6 +25,7 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        WebApiTagDefinition)
 from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
 from azure.identity import ManagedIdentityCredential
+from injector import inject
 from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
@@ -49,6 +50,7 @@ POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
 ADO_REST_API_AUTH_SCOPE = '499b84ac-1321-427f-aa17-267ca6975798/.default'
 
 
+@inject
 @dataclass
 class Runner:
 	config_loader: ConfigLoader
@@ -829,14 +831,18 @@ class Runner:
 
 
 def main():
+	from injector import Injector
+
+	from config import ConfigModule
 	from logger import LoggingModule
 
 	config_source = sys.argv[1]
-	# TODO Use injector.
-	logger = LoggingModule().provide_logger()
-	config_loader = ConfigLoader(config_source, logger)
-	suggester = Suggester()
-	runner = Runner(config_loader, logger, suggester)
+
+	inj = Injector([
+		ConfigModule(config_source),
+		LoggingModule,
+	])
+	runner = inj.get(Runner)
 	runner.run()
 
 

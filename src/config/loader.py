@@ -5,14 +5,15 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from injector import inject
 import requests
 import yaml
 from jsonpath import JSONPath
 
-from ..suggestions import Suggester
-from ..voting import map_vote
-from . import (ATTRIBUTES_WITH_PATTERNS, DEFAULT_MAX_REQUEUES_PER_RUN, Config,
-               MatchType, RequeueConfig)
+from suggestions import Suggester
+from voting import map_vote
+from .config import (ATTRIBUTES_WITH_PATTERNS, DEFAULT_MAX_REQUEUES_PER_RUN,
+                     Config, MatchType, RequeueConfig)
 
 
 @dataclass
@@ -21,6 +22,7 @@ class ConfigLoadInfo:
 	is_fresh: bool
 
 
+@inject
 @dataclass
 class ConfigLoader:
 	config_source: str

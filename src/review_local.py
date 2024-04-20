@@ -2,24 +2,31 @@ import logging
 import sys
 from dataclasses import dataclass
 
+from injector import inject
+
 from config import Config, ConfigLoader, JsonPathCheck, MatchType, Rule
 from suggestions import Suggester
 
 
+@inject
 @dataclass
 class LocalReviewer:
-	config_loader: ConfigLoader
+	config: Config
 	logger: logging.Logger
 	suggester: Suggester
 
 	def run(self):
-		config = self.config_loader.load_config().config
+		print(self.config)
 		# TODO Loop over local files in the desired folders or names.
 
 
 
 def main():
+	from injector import Injector
+
+	from config import ConfigModule
 	from logger import LoggingModule
+	from suggestions import SuggesterModule
 
 	config_source = sys.argv[1]
 
@@ -31,11 +38,12 @@ def main():
 	# * --fix
 	# Modify the file if a suggestion is generated.
  
-	# TODO Use injector.
-	logger = LoggingModule().provide_logger()
-	config_loader = ConfigLoader(config_source, logger)
-	suggester = Suggester()
-	runner = LocalReviewer(config_loader, logger, suggester)
+	inj = Injector([
+		ConfigModule(config_source),
+		LoggingModule,
+		SuggesterModule,
+	])
+	runner = inj.get(LocalReviewer)
 	runner.run()
 
 

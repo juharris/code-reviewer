@@ -1,0 +1,21 @@
+# The configuration for this repo when running locally.
+
+target_branch: main
+
+# is_dry_run: true
+log_level: INFO
+
+same_comment_per_PR_per_run_limit: 11
+
+rules:
+  # Check for trailing whitespace and add a suggestion for how to remove it.
+  - path_pattern: '^.'
+    diff_pattern: '\s+$'
+    vote: REJECT
+    comment: ":robot: Automated comment: Please remove the trailing whitespace in order to simplify the change and ensure that future automated formatting does not change this line."
+    comment_id: "remove trailing whitespace"
+    is_draft: false
+    merge_status_pattern: '(?i)^(?!conflicts)'
+    suggestions:
+      - pattern: '\s+$'
+        replacement: ''
