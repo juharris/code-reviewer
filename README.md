@@ -63,6 +63,8 @@ Scopes:
 ## Configuration File
 Rules are configured in a YAML file.
 
+For a simple example to review local files without using Azure DevOps, see [config.yaml](code-reviewer/config.yaml), the configuration file this repository.
+
 Example (fill in the values in `{...}` with your own values):
 ```yaml
 organization_url: 'https://dev.azure.com/{organization}'
