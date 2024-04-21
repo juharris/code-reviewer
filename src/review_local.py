@@ -33,6 +33,7 @@ class LocalReviewer:
 			self.run_rule_for_file(path, rule)
 
 	def run(self, paths: Collection[str]) -> None:
+		self.logger.info("Starting review.")
 		paths = self.get_files(paths)
 		for path in tqdm(paths,
 			desc="Reviewing files",
@@ -49,7 +50,11 @@ class LocalReviewer:
 			return
 		diff_regex = rule.get('diff_regex')
 		if diff_regex is not None:
-			comment = rule.get('comment', "")
+			comment = rule.get('comment')
+			if comment is not None:
+				comment = f"\n{comment}"
+			else:
+				comment = ""
 			# Purposely assume and enforce a sane encoding for now.
 			# Can revisit later.
 			# TODO Avoid re-opening the file for each rule.
@@ -59,7 +64,7 @@ class LocalReviewer:
 					# TODO If the regex is multiline, we need to use finditer.
 					if diff_regex.match(line):
 						# TODO Check vote to determine the log level.
-						self.logger.info("%s (%d): \"%s\" matches '%s'.\n%s", path, line_num, line, diff_regex.pattern, comment)
+						self.logger.info("%s (%d): \"%s\" matches '%s'.%s", path, line_num, line, diff_regex.pattern, comment)
 
 
 def main():

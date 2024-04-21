@@ -1,4 +1,4 @@
-# The configuration for this repo when running locally.
+# The configuration for checking this files in this repo when checking the files locally.
 
 target_branch: main
 
@@ -12,7 +12,7 @@ rules:
   - path_pattern: '^.'
     diff_pattern: '^.*\s+$'
     vote: REJECT
-    comment: ":robot: Automated comment: Please remove the trailing whitespace in order to simplify the change and ensure that future automated formatting does not change this line."
+    comment: "Please remove the trailing whitespace in order to simplify the change and ensure that future automated formatting does not change this line."
     comment_id: "remove trailing whitespace"
     is_draft: false
     merge_status_pattern: '(?i)^(?!conflicts)'
