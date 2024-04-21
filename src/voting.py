@@ -1,5 +1,5 @@
 from typing import Optional
-
+import logging
 
 APPROVE_VOTE = 10
 APPROVE_WITH_SUGGESTIONS_VOTE = 5
@@ -23,6 +23,19 @@ def map_vote(vote: Optional[int | str]) -> Optional[int]:
 		case 'approve':
 			return APPROVE_VOTE
 	return None
+
+
+def map_vote_to_log_level(vote: int) -> int:
+	match vote:
+		case -10:
+			return logging.ERROR
+		case -5:
+			return logging.WARNING
+		case 0:
+			return logging.INFO
+		case 5 | 10:
+			return logging.DEBUG
+	return logging.INFO
 
 
 def map_int_vote(vote: int) -> str | None:
