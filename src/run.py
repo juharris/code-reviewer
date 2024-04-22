@@ -517,7 +517,8 @@ class Runner:
 			start_offset = m.start() - text.rfind('\n', 0, m.start())
 			end_line_num = start_line_num + text.count('\n', m.start(), m.end())
 			end_offset = m.end() - text.rfind('\n', 0, m.end())
-			local_match_found, threads = self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, text, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
+			matching_text = text[m.start():m.end()]
+			local_match_found, threads = self.handle_diff_found(pr, pr_url, project, is_dry_run, pr_author, threads, rule, pr_review_state, matching_text, comment, comment_id, file_diff, start_line_num, start_offset, end_line_num, end_offset)
 			match_found = match_found or local_match_found
 		return match_found, threads
 

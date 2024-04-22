@@ -1,8 +1,9 @@
 import logging
 import os
 import re
+import sys
 from dataclasses import dataclass
-from typing import Collection, Iterable, Optional
+from typing import Collection, Iterable, Literal, Optional
 
 from injector import inject
 from tqdm import tqdm
@@ -10,13 +11,20 @@ from tqdm import tqdm
 from config import Config, Rule
 from local_run_state import LocalReviewRunState
 from suggestions import Suggester
-from voting import map_vote_to_log_level
+from voting import map_vote, map_vote_to_log_level
 
 
 @dataclass
 class FileInfo:
 	path: str
 	contents: Optional[str] = None
+
+
+@dataclass
+class RunOptions:
+	paths: Collection[str]
+	severity: Literal['none'] | Literal['wait'] | Literal['REJECT']
+	fix: bool
 
 
 @inject
@@ -42,16 +50,21 @@ class LocalReviewer:
 		for rule in rules:
 			self.run_rule_for_file(state, f, rule)
 
-	def run(self, paths: Collection[str]) -> None:
-		paths = self.get_files(paths)
+	def run(self, options: RunOptions) -> None:
+		if options.fix:
+			raise NotImplementedError("Modifying files is not supported yet.")
+		sev = map_vote(options.severity)
+		assert sev is not None, f"Expected severity to be a string for a vote. Got: \"{options.severity}\"."
+		paths = self.get_files(options.paths)
 		state = LocalReviewRunState()
 		for path in tqdm(paths,
 			desc="Reviewing files",
 			unit_scale=True, mininterval=2, unit=" files"
 		):
 			self.review_file(state, path)
-		# TODO Exit depending on the severity level and `state.error_level``.
-
+		if state.error_level <= sev:
+			self.logger.error("Exiting with error level 1 because problems were found.")
+			sys.exit(1)
 
 	def run_rule_for_file(self, state: LocalReviewRunState, file_info: FileInfo, rule: Rule) -> None:
 		p = rule.get('path_regex')
@@ -59,10 +72,10 @@ class LocalReviewer:
 		if p is not None and not p.match(path):
 			return
 		diff_regex = rule.get('diff_regex')
-		vote = rule.get('vote', 0)
-		assert isinstance(vote, int), f"Expected vote to be an int. Got: {vote}"
-		log_level = map_vote_to_log_level(vote)
 		if diff_regex is not None:
+			vote = rule.get('vote', 0)
+			assert isinstance(vote, int), f"Expected vote to be an int. Got: {vote} ({type(vote)})"
+			log_level = map_vote_to_log_level(vote)
 			comment = rule.get('comment')
 			if comment is not None:
 				comment = f"\n{comment}"
@@ -74,25 +87,22 @@ class LocalReviewer:
 				with open(path, 'r', encoding='utf8') as f:
 					file_info.contents = f.read()
 
-			for line_num, line in enumerate(file_info.contents.splitlines(), start=1):
+			first_line_num = 1
+			for line_num, line in enumerate(file_info.contents.splitlines(), start=first_line_num):
 				line = line.rstrip('\r\n')
-				# TODO If the regex is multiline, we need to use finditer.
 				if diff_regex.match(line):
-					# TODO Check vote to determine the log level.
-					self.logger.log(log_level, "%s (%d): \"%s\" matches '%s'.%s", path, line_num, line, diff_regex.pattern, comment)
-					state.error_level = max(state.error_level, log_level)
+					suggestion = self.suggester.get_suggestion(line, rule)
+					self.logger.log(log_level, "%s (%d): \"%s\" matches '%s'.%s%s", path, line_num, line, diff_regex.pattern, comment, suggestion)
+					state.error_level = min(state.error_level, vote)
 
 			if diff_regex.flags & re.MULTILINE:
-				first_line_num = 1
 				text = file_info.contents
-				# TODO Check vote to determine the log level.
 				for m in diff_regex.finditer(file_info.contents):
 					start_line_num = first_line_num + text.count('\n', 0, m.start())
-					start_offset = m.start() - text.rfind('\n', 0, m.start())
-					end_line_num = start_line_num + text.count('\n', m.start(), m.end())
-					end_offset = m.end() - text.rfind('\n', 0, m.end())
-					self.logger.log(log_level, "%s (%d): \"%s\" matches '%s'.%s", path, start_line_num, text[m.start():m.end()], diff_regex.pattern, comment)
-					state.error_level = max(state.error_level, log_level)
+					matching_text = text[m.start():m.end()]
+					suggestion = self.suggester.get_suggestion(matching_text, rule)
+					self.logger.log(log_level, "%s (%d): \"%s\" matches '%s'.%s%s", path, start_line_num, text[m.start():m.end()], diff_regex.pattern, comment, suggestion)
+					state.error_level = min(state.error_level, vote)
 
 
 
@@ -131,7 +141,7 @@ def main():
 	parser.add_argument(
 		'--fix',
 		action='store_true',
-		help="Automatically fix issues."
+		help="(not supported yet) Automatically fix issues."
 	)
 
 	args = parser.parse_args()
@@ -142,8 +152,9 @@ def main():
 		LoggingModule,
 		SuggesterModule,
 	])
+	options = RunOptions(args.paths, args.severity, args.fix)
 	runner = inj.get(LocalReviewer)
-	runner.run(args.paths)
+	runner.run(options)
 
 
 if __name__ == '__main__':
