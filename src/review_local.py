@@ -101,7 +101,7 @@ class LocalReviewer:
 					start_line_num = first_line_num + text.count('\n', 0, m.start())
 					matching_text = text[m.start():m.end()]
 					suggestion = self.suggester.get_suggestion(matching_text, rule)
-					self.logger.log(log_level, "%s (%d): \"%s\" matches '%s'.%s%s", path, start_line_num, text[m.start():m.end()], diff_regex.pattern, comment, suggestion)
+					self.logger.log(log_level, "%s (%d): \"%s\" matches '%s'.%s%s", path, start_line_num, matching_text, diff_regex.pattern, comment, suggestion)
 					state.error_level = min(state.error_level, vote)
 
 
