@@ -100,8 +100,7 @@ class ConfigLoader:
 							evaluation_check['json_path_'] = JSONPath(evaluation_check['json_path'])
 							if (pat := evaluation_check.get('pattern')) is not None:
 								evaluation_check['regex'] = re.compile(pat)
-						match_type = rule_policy_check.get('match_type')
-						if match_type is None:
+						if (match_type := rule_policy_check.get('match_type')) is None:
 							rule_policy_check['match_type'] = MatchType.ANY
 						else:
 							rule_policy_check['match_type'] = MatchType(match_type)
