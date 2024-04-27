@@ -642,7 +642,7 @@ class Runner:
 					right_file_end=CommentPosition(end_line_num, end_offset))
 				self.send_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, threads, pr_review_state, thread_context, comment_id=comment_id, matching_text=matching_text)
 			else:
-				self.update_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, comment_id, existing_comment_info, text=matching_text)
+				self.update_comment(pr, pr_url, is_dry_run, pr_author, rule, comment, comment_id, existing_comment_info, matching_text=matching_text)
 		return match_found, threads
 
 	def get_diffs(self, pr: GitPullRequest, pr_url: str) -> list[FileDiff]:
@@ -831,7 +831,7 @@ class Runner:
 
 		pr_review_state.comment_counts[comment_count_key] += 1
 
-	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, rule: Rule, comment: str, comment_id: Optional[str], existing_comment_info: CommentSearchResult, status='active', text: Optional[str]=None):
+	def update_comment(self, pr: GitPullRequest, pr_url: str, is_dry_run: bool, pr_author: IdentityRef, rule: Rule, comment: str, comment_id: Optional[str], existing_comment_info: CommentSearchResult, status='active', matching_text: Optional[str]=None):
 		thread: GitPullRequestCommentThread = existing_comment_info.thread
 		existing_comment: Comment = existing_comment_info.comment
 
@@ -846,8 +846,8 @@ class Runner:
 			else:
 				self.logger.info("Would update thread status: \"%s\" for comment: \"%s\"\nTitle: \"%s\"\nBy %s (%s)\n%s", status, comment, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-		if text is not None:
-			suggestion = self.suggester.get_suggestion(text, rule)
+		if matching_text is not None:
+			suggestion = self.suggester.get_suggestion(matching_text, rule)
 			if suggestion is not None:
 				comment += suggestion
 		if comment_id is not None:
