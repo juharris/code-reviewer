@@ -141,3 +141,18 @@ def test_multiple_sequential_suggestions():
 	} # type: ignore
 
 	_test(expected, text, rule)
+
+
+def test_partial():
+	text = "hello ABCD"
+	expected = "hello F"
+
+	rule: Rule = {
+		'suggestions': [
+			{
+				'pattern': '^(.*?)\\s+$',
+				'replacement': '\\1'
+			}
+		]
+	} # type: ignore
+	_test(expected, text, rule)
