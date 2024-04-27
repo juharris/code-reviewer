@@ -61,7 +61,7 @@ class Runner:
 	git_client: GitClient = field(init=False)
 	policy_client: PolicyClient = field(init=False)
 	rest_api_kwargs: dict[str, Any] = field(init=False)
-	pr_url_to_latest_commit_seen: dict[str, str] = field(default={}, init=False)
+	pr_url_to_latest_commit_seen: dict[str, str] = field(default_factory=dict, init=False)
 
 	def run(self) -> None:
 		# Log the docker image build timestamp for easier debugging.

@@ -105,7 +105,6 @@ class LocalReviewer:
 					state.error_level = min(state.error_level, vote)
 
 
-
 def main():
 	import argparse
 
