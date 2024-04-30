@@ -118,4 +118,4 @@ class ConfigLoader:
 			self.config_hash = config_hash
 
 			self.logger.info("Loaded configuration with %d rule(s).", len(rules))
-		return ConfigLoadInfo(config, is_fresh)
+		return ConfigLoadInfo(self.config, is_fresh)

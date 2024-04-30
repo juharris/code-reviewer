@@ -77,7 +77,7 @@ class Runner:
 				state = RunState()
 				self.review_prs(state)
 			except:
-				self.logger.exception(f"Error while trying to load the config or get pull requests to review.")
+				self.logger.exception("Error while trying to load the config or get pull requests to review.")
 
 			wait_after_review_s = self.config.get('wait_after_review_s')
 			if wait_after_review_s is not None:
