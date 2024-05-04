@@ -5,14 +5,14 @@ from .config_module import ConfigModule
 from .loader import ConfigLoader
 
 __all__ = [
-	'ATTRIBUTES_WITH_PATTERNS',
-	'Config',
-	'ConfigLoader',
-	'ConfigModule',
-	'DEFAULT_MAX_REQUEUES_PER_RUN',
-	'JsonPathCheck',
-	'MatchType',
-	'PolicyEvaluationChecks',
-	'RequeueConfig',
-	'Rule',
+    'ATTRIBUTES_WITH_PATTERNS',
+    'Config',
+    'ConfigLoader',
+    'ConfigModule',
+    'DEFAULT_MAX_REQUEUES_PER_RUN',
+    'JsonPathCheck',
+    'MatchType',
+    'PolicyEvaluationChecks',
+    'RequeueConfig',
+    'Rule',
 ]

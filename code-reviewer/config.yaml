@@ -4,13 +4,25 @@ log_level: INFO
 
 rules:
   # Check for trailing whitespace and add a suggestion for how to remove it.
-  - path_pattern: '^.'
+  - comment_id: "remove trailing whitespace"
+    path_pattern: '^.'
     diff_pattern: '^.*\s+$'
     vote: REJECT
     comment: "Please remove the trailing whitespace in order to simplify the change and ensure that future automated formatting does not change this line."
-    comment_id: "remove trailing whitespace"
     is_draft: false
     merge_status_pattern: '(?i)^(?!conflicts)'
     suggestions:
       - pattern: '\s+$'
         replacement: ''
+
+  # Check for indentation using tabs.
+  - comment_id: "indent using spaces"
+    path_pattern: '^.*\.py$'
+    diff_pattern: '^\t+'
+    vote: REJECT
+    comment: "Please use 4 spaces for indentation instead of tabs. Use `autopep8 --jobs 0 --in-place .` to automatically format files."
+    is_draft: false
+    merge_status_pattern: '(?i)^(?!conflicts)'
+    suggestions:
+      - pattern: '\t'
+        replacement: '    '

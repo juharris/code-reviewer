@@ -36,4 +36,5 @@ jobs:
         PYTHONPATH=src pytest
     - name: Check Code
       run: |
+        autopep8 --exit-code .
         python src/review_local.py --config_source code-reviewer/config.yaml `git ls-files`

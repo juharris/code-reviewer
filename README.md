@@ -405,10 +405,10 @@ The rules are configured in [pyproject.toml](pyproject.toml).
 
 To see the changes, run:
 ```shell
-autopep8 --jobs 0 --exit-code .
+autopep8 --exit-code .
 ```
 
 To make the changes automatically, run:
 ```shell
-autopep8 --jobs 0 --in-place .
-shell
+autopep8 --jobs 0 --recursive --in-place .
+```
