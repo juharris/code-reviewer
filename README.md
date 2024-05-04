@@ -1,7 +1,7 @@
 # code-reviewer
-This project allows developers to automatically review pull requests in Azure DevOps using mostly regular expression based checks and actions that can be easily customized in a YAML configuration file.
+This project allows developers to automatically review local files or pull requests in Azure DevOps using mostly regular expression based checks and actions that can be easily customized in a YAML configuration file.
 
-The script can be configured to run in a loop and wait a certain amount of time between each run.
+When reviewing a pull request in Azure DevOps, the script can be configured to run in a loop and wait a certain amount of time between each run.
 
 ## Examples:
 * Block code that matches patterns that are hard to check with static analysis tools and comment directly on matching lines.
@@ -62,6 +62,8 @@ Scopes:
 
 ## Configuration File
 Rules are configured in a YAML file.
+
+For a simple example to review local files without using Azure DevOps, see [config.yaml](code-reviewer/config.yaml), the configuration file this repository.
 
 Example (fill in the values in `{...}` with your own values):
 ```yaml
@@ -329,6 +331,8 @@ rules:
 ```
 
 # Running
+
+## Checking Pull Requests
 Run the script:
 ```bash
 CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
@@ -341,6 +345,12 @@ CR_ADO_PAT='YOUR PAT' python src/run.py https://mysite.com/config.yml
 
 The script will reload the config file for each run.
 A run happens when the script is started and then every `wait_after_review_s` seconds.
+
+## Checking Local Files
+You can also check local files:
+```bash
+python src/review_local.py --config_source my_config.yaml `git ls-files`
+```
 
 # Testing
 

@@ -1,10 +1,9 @@
-from typing import Optional
 import re
+from typing import Optional
 
 from config import Rule
 
-from . import SuggestedChange, SuggestedChanges
-
+from . import SuggestedChange
 
 
 class Suggester:
