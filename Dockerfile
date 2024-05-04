@@ -30,7 +30,7 @@ RUN ./configure --enable-optimizations && \
     make -j $(nproc) && \
     make install && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && \
-    curl -sSL https://install.python-poetry.org | python3 - --version 1.8.3
+    curl -sSL https://install.python-poetry.org | python3 - --version 1.8.2
 
 # FIXME Temp remove
 RUN poetry --version
