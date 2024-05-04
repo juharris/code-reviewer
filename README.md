@@ -46,8 +46,25 @@ See the documentation and examples below for more details.
 # Setup
 Written using Python 3.10
 
-```bash
-pip install --requirement requirements.txt
+Example Python env initialization with Conda:
+```shell
+conda create --yes --name code-reviewer python=3.10
+conda activate code-reviewer
+```
+
+## Install Poetry
+See [here](https://python-poetry.org/docs/main).
+
+## Install Dependencies
+```shell
+poetry install
+```
+
+# Running
+Make sure the environment is activated.
+For example, if you are using Conda:
+```shell
+conda activate code-reviewer
 ```
 
 Get a PAT: https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows#create-a-pat
@@ -334,12 +351,12 @@ rules:
 
 ## Checking Pull Requests
 Run the script:
-```bash
+```shell
 CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
 ```
 
 You can also use a config file from a URL (must start with "https://" or "http://"):
-```bash
+```shell
 CR_ADO_PAT='YOUR PAT' python src/run.py https://mysite.com/config.yml
 ```
 
@@ -348,19 +365,13 @@ A run happens when the script is started and then every `wait_after_review_s` se
 
 ## Checking Local Files
 You can also check local files:
-```bash
+```shell
 python src/review_local.py --config_source my_config.yaml `git ls-files`
 ```
 
 # Testing
-
-Install `pytest`:
-```bash
-pip install pytest
-```
-
 Run the automated tests:
-```bash
+```shell
 PYTHONPATH=src pytest
 ```
 
@@ -388,3 +399,16 @@ Here are some resources you may find useful:
 - [Migrate custom software to Azure App Service using a custom container - Azure App Service](https://learn.microsoft.com/en-us/azure/app-service/tutorial-custom-container?tabs=azure-cli&pivots=container-linux)
 - [Choose the right authentication mechanism - Azure DevOps](https://learn.microsoft.com/en-us/azure/devops/integrate/get-started/authentication/authentication-guidance?view=azure-devops)
 - [Use service principals & managed identities - Azure DevOps](https://learn.microsoft.com/en-us/azure/devops/integrate/get-started/authentication/service-principal-managed-identity?view=azure-devops)
+
+# Linting
+The rules are configured in [pyproject.toml](pyproject.toml).
+
+To see the changes, run:
+```shell
+autopep8 --jobs 0 --exit-code .
+```
+
+To make the changes automatically, run:
+```shell
+autopep8 --jobs 0 --in-place .
+shell

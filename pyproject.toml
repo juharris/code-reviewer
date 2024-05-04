@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "code-reviewer"
+version = "0.1.0"
+description = "Automatically review pull requests in Azure DevOps and code locally using regular expression based checks and actions that can be customized in a YAML configuration file."
+authors = ["Justin D. Harris <juharris@users.noreply.github.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+azure-devops = "^7.1.0b4"
+azure-identity = "^1.16.0"
+injector = "^0.21.0"
+jsonpath-python = "^1.0.6"
+pyyaml = "^6.0.1"
+requests = "^2.31.0"
+tqdm = "^4.66.4"
+
+[tool.poetry.group.dev.dependencies]
+autopep8 = "^2.1.0"
+pytest = "^8.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.autopep8]
+max_line_length = 140
+# Indent using 4 spaces because it's hard to get autopep8 to use tabs.
+# Even with ignoring W191, it still indents with spaces when wrapping lines.
+indent_size = 4
+recursive = true
+aggressive = 3

@@ -29,12 +29,16 @@ WORKDIR /opt/Python-${PYTHON_VERSION}
 RUN ./configure --enable-optimizations && \
     make -j $(nproc) && \
     make install && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && \
+    curl -sSL https://install.python-poetry.org | python3 - --version 1.8.3
+
+# FIXME Temp remove
+RUN poetry --version
 
 WORKDIR /code
 
-COPY requirements.txt .
-RUN pip install --requirement requirements.txt
+COPY poetry.lock pyproject.toml ./
+RUN poetry install
 
 # Ordered by descending size.
 COPY src ./src

@@ -134,7 +134,6 @@ def main():
 		type=str,
 		default='REJECT',
 		help="Minimum severity level to exit with an error.",
-		# TODO Make better name for the no vote.
 		choices=('none', 'wait', 'REJECT'),
 	)
 	parser.add_argument(
