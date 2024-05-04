@@ -1,7 +1,7 @@
 # code-reviewer
-This project allows developers to automatically review pull requests in Azure DevOps using mostly regular expression based checks and actions that can be easily customized in a YAML configuration file.
+This project allows developers to automatically review local files or pull requests in Azure DevOps using mostly regular expression based checks and actions that can be easily customized in a YAML configuration file.
 
-The script can be configured to run in a loop and wait a certain amount of time between each run.
+When reviewing a pull request in Azure DevOps, the script can be configured to run in a loop and wait a certain amount of time between each run.
 
 ## Examples:
 * Block code that matches patterns that are hard to check with static analysis tools and comment directly on matching lines.
