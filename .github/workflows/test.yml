@@ -36,5 +36,5 @@ jobs:
         PYTHONPATH=src poetry run pytest
     - name: Check Code
       run: |
-        poetry run autopep8 --exit-code .
+        poetry run autopep8 --jobs 0 --exit-code --diff .
         poetry run python src/review_local.py --config_source code-reviewer/config.yaml `git ls-files`

@@ -29,4 +29,5 @@ max_line_length = 140
 # Indent using 4 spaces because it's hard to get autopep8 to use tabs.
 # Even with ignoring W191, it still indents with spaces when wrapping lines.
 indent_size = 4
+recursive = true
 aggressive = 3
