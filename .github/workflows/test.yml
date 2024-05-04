@@ -27,13 +27,14 @@ jobs:
         python-version: "3.10"
     - name: Install dependencies
       run: |
+        set -ex
         python -m pip install --upgrade pip
         curl -sSL https://install.python-poetry.org | python - --version 1.8.2
         poetry install
     - name: Test with pytest
       run: |
-        PYTHONPATH=src pytest
+        PYTHONPATH=src poetry run pytest
     - name: Check Code
       run: |
-        autopep8 --exit-code .
-        python src/review_local.py --config_source code-reviewer/config.yaml `git ls-files`
+        poetry run autopep8 --exit-code .
+        poetry run python src/review_local.py --config_source code-reviewer/config.yaml `git ls-files`
