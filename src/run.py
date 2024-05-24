@@ -24,7 +24,7 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        WebApiCreateTagRequestData,
                                        WebApiTagDefinition)
 from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
-from azure.identity import ManagedIdentityCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential, InteractiveBrowserCredential
 from injector import inject
 from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
@@ -115,27 +115,47 @@ class Runner:
 			s += log_start
 			self.logger.info(s)
 
+	def get_credential(self):
+		try:
+			credential = DefaultAzureCredential()
+			# Check if given credential can get token successfully.
+			credential.get_token('https://management.azure.com/.default')
+		except Exception as ex:
+			self.logger.exception("Failed to get token with DefaultAzureCredential. Trying InteractiveBrowserCredential.")
+			# Fall back to InteractiveBrowserCredential in case DefaultAzureCredential not work
+			credential = InteractiveBrowserCredential()
+		return credential
+
 	def review_prs(self, state: RunState) -> None:
 		personal_access_token = self.config.get('PAT')
 		if not personal_access_token:
 			personal_access_token = os.environ.get('CR_ADO_PAT')
 			self.config['PAT'] = personal_access_token
 
-		if personal_access_token:
-			credentials = BasicAuthentication('', personal_access_token)
-			self.rest_api_kwargs = {'auth': ('', personal_access_token)}
-
-		else:
-			managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
-			if managed_identity_client_id:
-				managed_identity_credential = ManagedIdentityCredential(client_id=managed_identity_client_id)
-				token = managed_identity_credential.get_token(ADO_REST_API_AUTH_SCOPE)
-				token_dict = {'access_token': token.token}
-				credentials = OAuthTokenAuthentication(managed_identity_client_id, token_dict)
-				self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
+		credentials = self.get_credential()
+		token = credentials.get_token('vso.code')
+		print(credentials)
+		print(credentials.__dict__)
+		print(token)
+		token_dict = {'access_token': token.token}
+		credentials = OAuthTokenAuthentication(self.config['user_id'], token_dict)
+		self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
+		if credentials is None:
+			if personal_access_token:
+				credentials = BasicAuthentication('', personal_access_token)
+				self.rest_api_kwargs = {'auth': ('', personal_access_token)}
 
 			else:
-				raise ValueError("No personal access token and no managed identity client ID provided. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT' in the config file.")
+				managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
+				if managed_identity_client_id:
+					managed_identity_credential = ManagedIdentityCredential(client_id=managed_identity_client_id)
+					token = managed_identity_credential.get_token(ADO_REST_API_AUTH_SCOPE)
+					token_dict = {'access_token': token.token}
+					credentials = OAuthTokenAuthentication(managed_identity_client_id, token_dict)
+					self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
+
+				else:
+					raise ValueError("No personal access token and no managed identity client ID provided. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT' in the config file.")
 
 		organization_url = self.config['organization_url']
 		project = self.config['project']
