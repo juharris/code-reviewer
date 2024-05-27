@@ -13,16 +13,16 @@ from typing import Any, Collection, Optional
 import requests
 from azure.devops.connection import Connection
 from azure.devops.released.git import (Comment, CommentPosition,
-                                       CommentThreadContext,
-                                       GitBaseVersionDescriptor, GitClient,
-                                       GitCommitDiffs, GitPullRequest,
-                                       GitPullRequestCommentThread,
-                                       GitPullRequestIteration,
-                                       GitPullRequestSearchCriteria,
-                                       GitTargetVersionDescriptor, IdentityRef,
-                                       IdentityRefWithVote,
-                                       WebApiCreateTagRequestData,
-                                       WebApiTagDefinition)
+									   CommentThreadContext,
+									   GitBaseVersionDescriptor, GitClient,
+									   GitCommitDiffs, GitPullRequest,
+									   GitPullRequestCommentThread,
+									   GitPullRequestIteration,
+									   GitPullRequestSearchCriteria,
+									   GitTargetVersionDescriptor, IdentityRef,
+									   IdentityRefWithVote,
+									   WebApiCreateTagRequestData,
+									   WebApiTagDefinition)
 from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
 from azure.identity import DefaultAzureCredential, ManagedIdentityCredential, InteractiveBrowserCredential
 from injector import inject
@@ -31,7 +31,7 @@ from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
 from config import (ATTRIBUTES_WITH_PATTERNS, Config, ConfigLoader,
-                    JsonPathCheck, MatchType, PolicyEvaluationChecks, Rule)
+					JsonPathCheck, MatchType, PolicyEvaluationChecks, Rule)
 from file_diff import FileDiff
 from pr_review_state import PrReviewState
 from run_state import RunState
@@ -120,13 +120,11 @@ class Runner:
 		try:
 			credential = DefaultAzureCredential()
 			# Check if given credential can get token successfully.
-			# credential.get_token('https://management.azure.com/.default')
-			print("Trying with DefaultAzureCredential.")
+			self.logger.debug("Trying to get a token with DefaultAzureCredential.")
 			result = credential.get_token(ado_scope).token
-			print("Worked with DefaultAzureCredential.")
-		except Exception as ex:
+			self.logger.debug("Got token with DefaultAzureCredential.")
+		except Exception:
 			self.logger.exception("Failed to get token with DefaultAzureCredential. Trying InteractiveBrowserCredential.")
-			# Fall back to InteractiveBrowserCredential in case DefaultAzureCredential not work
 			credential = InteractiveBrowserCredential()
 			result = credential.get_token(ado_scope).token
 		return result
@@ -143,23 +141,20 @@ class Runner:
 			token_dict = {'access_token': token}
 			credentials = OAuthTokenAuthentication(self.config['user_id'], token_dict)
 			self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token}"}}
-		# TODO Revise logic below. Test with token commenting and other actions to ensure that it has the right access rights.
-		if credentials is None:
-			if personal_access_token:
-				credentials = BasicAuthentication('', personal_access_token)
-				self.rest_api_kwargs = {'auth': ('', personal_access_token)}
+		elif personal_access_token:
+			credentials = BasicAuthentication('', personal_access_token)
+			self.rest_api_kwargs = {'auth': ('', personal_access_token)}
+		else:
+			managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
+			if managed_identity_client_id:
+				managed_identity_credential = ManagedIdentityCredential(client_id=managed_identity_client_id)
+				token = managed_identity_credential.get_token(ADO_REST_API_AUTH_SCOPE)
+				token_dict = {'access_token': token.token}
+				credentials = OAuthTokenAuthentication(managed_identity_client_id, token_dict)
+				self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
 
 			else:
-				managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
-				if managed_identity_client_id:
-					managed_identity_credential = ManagedIdentityCredential(client_id=managed_identity_client_id)
-					token = managed_identity_credential.get_token(ADO_REST_API_AUTH_SCOPE)
-					token_dict = {'access_token': token.token}
-					credentials = OAuthTokenAuthentication(managed_identity_client_id, token_dict)
-					self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
-
-				else:
-					raise ValueError("No personal access token and no managed identity client ID provided. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT' in the config file.")
+				raise ValueError("No personal access token and no managed identity client ID provided. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT' in the config file.")
 
 		organization_url = self.config['organization_url']
 		project = self.config['project']

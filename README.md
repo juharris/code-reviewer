@@ -50,6 +50,11 @@ Written using Python 3.10
 pip install --requirement requirements.txt
 ```
 
+## Authentication
+No extra steps are required if you are using the script for a device for which the current user has access to the Azure DevOps organization.
+
+### Use a PAT (Optional)
+If the current user does not have access to the Azure DevOps organization, then you can use a Personal Access Token (PAT) to authenticate.
 Get a PAT: https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows#create-a-pat
 
 Give the PAT the following permissions:
@@ -57,8 +62,8 @@ Give the PAT the following permissions:
 Scopes:
 * Code: Full, Status
 * Project and Team: Read
-* User Profile: Read
 * Pull Request Threads: Read & Write
+* User Profile: Read
 
 ## Configuration File
 Rules are configured in a YAML file.
