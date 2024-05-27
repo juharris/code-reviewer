@@ -119,7 +119,10 @@ class Runner:
 		try:
 			credential = DefaultAzureCredential()
 			# Check if given credential can get token successfully.
-			credential.get_token('https://management.azure.com/.default')
+			# credential.get_token('https://management.azure.com/.default')
+			print("Trying with DefaultAzureCredential.")
+			credential.get_token('https://dev.azure.com/.default')
+			print("Worked with DefaultAzureCredential.")
 		except Exception as ex:
 			self.logger.exception("Failed to get token with DefaultAzureCredential. Trying InteractiveBrowserCredential.")
 			# Fall back to InteractiveBrowserCredential in case DefaultAzureCredential not work
@@ -133,7 +136,9 @@ class Runner:
 			self.config['PAT'] = personal_access_token
 
 		credentials = self.get_credential()
-		token = credentials.get_token('vso.code')
+		# Maybe try 'vso.work' scope?
+		# token = credentials.get_token('vso.work')
+		token = credentials.get_token('https://dev.azure.com/.default')
 		print(credentials)
 		print(credentials.__dict__)
 		print(token)
