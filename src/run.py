@@ -115,36 +115,35 @@ class Runner:
 			s += log_start
 			self.logger.info(s)
 
-	def get_credential(self):
+	def get_token(self) -> str:
+		ado_scope = '499b84ac-1321-427f-aa17-267ca6975798/.default'
 		try:
 			credential = DefaultAzureCredential()
 			# Check if given credential can get token successfully.
 			# credential.get_token('https://management.azure.com/.default')
 			print("Trying with DefaultAzureCredential.")
-			credential.get_token('https://dev.azure.com/.default')
+			result = credential.get_token(ado_scope).token
 			print("Worked with DefaultAzureCredential.")
 		except Exception as ex:
 			self.logger.exception("Failed to get token with DefaultAzureCredential. Trying InteractiveBrowserCredential.")
 			# Fall back to InteractiveBrowserCredential in case DefaultAzureCredential not work
 			credential = InteractiveBrowserCredential()
-		return credential
+			result = credential.get_token(ado_scope).token
+		return result
 
 	def review_prs(self, state: RunState) -> None:
 		personal_access_token = self.config.get('PAT')
 		if not personal_access_token:
 			personal_access_token = os.environ.get('CR_ADO_PAT')
-			self.config['PAT'] = personal_access_token
+			if personal_access_token:
+				self.config['PAT'] = personal_access_token
 
-		credentials = self.get_credential()
-		# Maybe try 'vso.work' scope?
-		# token = credentials.get_token('vso.work')
-		token = credentials.get_token('https://dev.azure.com/.default')
-		print(credentials)
-		print(credentials.__dict__)
-		print(token)
-		token_dict = {'access_token': token.token}
-		credentials = OAuthTokenAuthentication(self.config['user_id'], token_dict)
-		self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
+		if not personal_access_token:
+			token = self.get_token()
+			token_dict = {'access_token': token}
+			credentials = OAuthTokenAuthentication(self.config['user_id'], token_dict)
+			self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token}"}}
+		# TODO Revise logic below. Test with token commenting and other actions to ensure that it has the right access rights.
 		if credentials is None:
 			if personal_access_token:
 				credentials = BasicAuthentication('', personal_access_token)
