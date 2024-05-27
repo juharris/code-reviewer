@@ -74,8 +74,8 @@ Give the PAT the following permissions:
 Scopes:
 * Code: Full, Status
 * Project and Team: Read
-* User Profile: Read
 * Pull Request Threads: Read & Write
+* User Profile: Read
 
 ## Configuration File
 Rules are configured in a YAML file.
