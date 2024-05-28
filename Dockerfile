@@ -32,13 +32,11 @@ RUN ./configure --enable-optimizations && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && \
     curl -sSL https://install.python-poetry.org | python3 - --version 1.8.2
 
-# FIXME Temp remove
-RUN poetry --version
-
 WORKDIR /code
 
 COPY poetry.lock pyproject.toml ./
-RUN poetry install
+# Add the path for Poetry.
+RUN PATH="$HOME/.local/bin:$PATH" poetry install
 
 # Ordered by descending size.
 COPY src ./src
