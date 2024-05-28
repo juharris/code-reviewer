@@ -130,7 +130,6 @@ class Runner:
             result = credential.get_token(ado_scope).token
         return result
 
-
     def review_prs(self, state: RunState) -> None:
         personal_access_token = self.config.get('PAT')
         if not personal_access_token:
@@ -159,7 +158,7 @@ class Runner:
                 except Exception as ex:
                     self.logger.exception("Failed to get a token for the current user.")
                     raise ValueError(
-                    "No personal access token, no managed identity client ID provided, and could not get a token for the current user. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT', in the config file.") from ex
+                        "No personal access token, no managed identity client ID provided, and could not get a token for the current user. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT', in the config file.") from ex
 
         organization_url = self.config['organization_url']
         project = self.config['project']
