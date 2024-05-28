@@ -3,7 +3,7 @@ from .suggester import Suggester
 from .suggester_module import SuggesterModule
 
 __all__ = [
-	'SuggestedChange',
-	'Suggester',
-	'SuggesterModule',
+    'SuggestedChange',
+    'Suggester',
+    'SuggesterModule',
 ]

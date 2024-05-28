@@ -3,36 +3,38 @@ from typing import Optional, TypedDict
 
 
 class Block(TypedDict):
-	changeType: int
-	"""
-	The type of change.
-	0 means no change, 1 means added, 2 means removed.
-	3 can happen, it's unclear what is means.
-	Maybe it's a conflict?
-	Maybe it's something that is in the target branch (e.g., main), but not pulled in the PR branch yet?
-	Seems like 3 does not always mean modified as sometimes it might happen if the file is not up to date with the base branch.
-	"""
+    changeType: int
+    """
+    The type of change.
+    0 means no change, 1 means added, 2 means removed.
+    3 can happen, it's unclear what is means.
+    Maybe it's a conflict?
+    Maybe it's something that is in the target branch (e.g., main), but not pulled in the PR branch yet?
+    Seems like 3 does not always mean modified as sometimes it might happen if the file is not up to date with the base branch.
+    """
 
-	mLines: list[str]
-	mLine: int
-	mLinesCount: int
+    mLines: list[str]
+    mLine: int
+    mLinesCount: int
 
-	oLine: int
-	oLines: list[str]
-	oLinesCount: int
+    oLine: int
+    oLines: list[str]
+    oLinesCount: int
 
-	truncatedBefore: bool
+    truncatedBefore: bool
+
 
 class Diff(TypedDict):
-	blocks: list[Block]
+    blocks: list[Block]
+
 
 @dataclass
 class FileDiff:
-	change_type: str
-	path: str
-	original_path: Optional[str] = None
-	diff: Optional[Diff] = None
-	contents: Optional[str] = None
-	"""
-	The contents when the change type is 'add'.
-	"""
+    change_type: str
+    path: str
+    original_path: Optional[str] = None
+    diff: Optional[Diff] = None
+    contents: Optional[str] = None
+    """
+    The contents when the change type is 'add'.
+    """

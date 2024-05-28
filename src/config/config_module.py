@@ -8,14 +8,14 @@ from .loader import ConfigLoader
 
 @dataclass
 class ConfigModule(Module):
-	config_source: str
+    config_source: str
 
-	@provider
-	@singleton
-	def provide_config_loader(self, builder: ClassAssistedBuilder[ConfigLoader]) -> ConfigLoader:
-		return builder.build(config_source=self.config_source)
+    @provider
+    @singleton
+    def provide_config_loader(self, builder: ClassAssistedBuilder[ConfigLoader]) -> ConfigLoader:
+        return builder.build(config_source=self.config_source)
 
-	@provider
-	@singleton
-	def provide_config(self, loader: ConfigLoader) -> Config:
-		return loader.load_config().config
+    @provider
+    @singleton
+    def provide_config(self, loader: ConfigLoader) -> Config:
+        return loader.load_config().config

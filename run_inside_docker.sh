@@ -4,5 +4,8 @@
 echo "Starting nginx"
 nginx
 
+# Add Poetry to the path.
+export PATH="$HOME/.local/bin:$PATH"
+
 echo "Starting run.py"
-python3 src/run.py config.yml
+poetry run python3 src/run.py config.yml
