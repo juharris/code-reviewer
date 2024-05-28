@@ -29,12 +29,14 @@ WORKDIR /opt/Python-${PYTHON_VERSION}
 RUN ./configure --enable-optimizations && \
     make -j $(nproc) && \
     make install && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && \
+    curl -sSL https://install.python-poetry.org | python3 - --version 1.8.2
 
 WORKDIR /code
 
-COPY requirements.txt .
-RUN pip install --requirement requirements.txt
+COPY poetry.lock pyproject.toml ./
+# Add the path for Poetry.
+RUN PATH="$HOME/.local/bin:$PATH" poetry install
 
 # Ordered by descending size.
 COPY src ./src
