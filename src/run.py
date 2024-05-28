@@ -166,11 +166,14 @@ class Runner:
         connection = Connection(base_url=organization_url, creds=credentials)
         self.git_client = connection.clients.get_git_client()
         self.policy_client = connection.clients_v7_1.get_policy_client()
-        # TODO Try to get the current user's email and ID, but getting auth issues:
-        # Try to get the client says "The requested resource requires user authentication: https://app.vssps.visualstudio.com/_apis".
+        # TODO Try to use profile.
+        # It works when using `DefaultAzureCredential`.
         # from azure.devops.released.profile.profile_client import ProfileClient
+        # from azure.devops.v7_1.profile.models import Profile
         # profile_client: ProfileClient = connection.clients.get_profile_client()
-        # r = profile_client.get_profile('me')
+        # r: Profile = profile_client.get_profile('me')
+        # print(r)
+        # print(r.additional_properties['emailAddress'])
 
         status = self.config.get('status', 'active')
         top = self.config.get('top', 50)
