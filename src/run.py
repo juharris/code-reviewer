@@ -24,7 +24,7 @@ from azure.devops.released.git import (Comment, CommentPosition,
                                        WebApiCreateTagRequestData,
                                        WebApiTagDefinition)
 from azure.devops.v7_1.policy import PolicyClient, PolicyEvaluationRecord
-from azure.identity import ManagedIdentityCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential, InteractiveBrowserCredential
 from injector import inject
 from jsonpath import JSONPath
 from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
@@ -117,16 +117,29 @@ class Runner:
             s += log_start
             self.logger.info(s)
 
+    def _get_token(self) -> str:
+        ado_scope = '499b84ac-1321-427f-aa17-267ca6975798/.default'
+        try:
+            credential = DefaultAzureCredential()
+            self.logger.debug("Trying to get a token with DefaultAzureCredential.")
+            result = credential.get_token(ado_scope).token
+            self.logger.debug("Got token with DefaultAzureCredential.")
+        except Exception:
+            self.logger.exception("Failed to get token with DefaultAzureCredential. Trying InteractiveBrowserCredential.")
+            credential = InteractiveBrowserCredential()
+            result = credential.get_token(ado_scope).token
+        return result
+
     def review_prs(self, state: RunState) -> None:
         personal_access_token = self.config.get('PAT')
         if not personal_access_token:
             personal_access_token = os.environ.get('CR_ADO_PAT')
-            self.config['PAT'] = personal_access_token
+            if personal_access_token:
+                self.config['PAT'] = personal_access_token
 
         if personal_access_token:
             credentials = BasicAuthentication('', personal_access_token)
             self.rest_api_kwargs = {'auth': ('', personal_access_token)}
-
         else:
             managed_identity_client_id = os.environ.get('CR_MANAGED_IDENTITY_CLIENT_ID')
             if managed_identity_client_id:
@@ -137,8 +150,15 @@ class Runner:
                 self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token.token}"}}
 
             else:
-                raise ValueError(
-                    "No personal access token and no managed identity client ID provided. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT' in the config file.")
+                try:
+                    token = self._get_token()
+                    token_dict = dict(access_token=token)
+                    credentials = OAuthTokenAuthentication(self.config['user_id'], token_dict)
+                    self.rest_api_kwargs = {'headers': {"Authorization": f"Bearer {token}"}}
+                except Exception as ex:
+                    self.logger.exception("Failed to get a token for the current user.")
+                    raise ValueError(
+                        "No personal access token, no managed identity client ID provided, and could not get a token for the current user. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT', in the config file.") from ex
 
         organization_url = self.config['organization_url']
         project = self.config['project']
@@ -146,11 +166,14 @@ class Runner:
         connection = Connection(base_url=organization_url, creds=credentials)
         self.git_client = connection.clients.get_git_client()
         self.policy_client = connection.clients_v7_1.get_policy_client()
-        # TODO Try to get the current user's email and ID, but getting auth issues:
-        # Try to get the client says "The requested resource requires user authentication: https://app.vssps.visualstudio.com/_apis".
+        # TODO Try to use profile.
+        # It works when using `DefaultAzureCredential`.
         # from azure.devops.released.profile.profile_client import ProfileClient
+        # from azure.devops.v7_1.profile.models import Profile
         # profile_client: ProfileClient = connection.clients.get_profile_client()
-        # r = profile_client.get_profile('me')
+        # r: Profile = profile_client.get_profile('me')
+        # print(r)
+        # print(r.additional_properties['emailAddress'])
 
         status = self.config.get('status', 'active')
         top = self.config.get('top', 50)

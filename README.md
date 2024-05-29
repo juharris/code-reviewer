@@ -67,6 +67,12 @@ For example, if you are using Conda:
 conda activate code-reviewer
 ```
 
+## Authentication
+No extra steps are required if you are running the script from a device for which the current user has access to the Azure DevOps organization.
+For example, if you are using your work account in Windows.
+
+### Use a PAT (Optional)
+If the current user does not have access to the Azure DevOps organization, then you can use a Personal Access Token (PAT) to authenticate.
 Get a PAT: https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows#create-a-pat
 
 Give the PAT the following permissions:
