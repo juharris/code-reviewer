@@ -187,7 +187,7 @@ class Runner:
             source_ref_name=source_ref,
             target_ref_name=target_ref)
         prs: Collection[GitPullRequest] = self.git_client.get_pull_requests(repository_name, search, project, top=top)
-        self.logger.debug("Found %d pull request(s).", len(prs))
+        self.logger.info("Found %d pull request(s).", len(prs))
         self.comment_stats = Counter()
         for pr in prs:
             pr_url = f"{organization_url}/{urllib.parse.quote(project)}/_git/{urllib.parse.quote(repository_name)}/pullrequest/{pr.pull_request_id}"
