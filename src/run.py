@@ -160,6 +160,8 @@ class Runner:
                     raise ValueError(
                         "No personal access token, no managed identity client ID provided, and could not get a token for the current user. Please set one of the environment variables CR_ADO_PAT or CR_MANAGED_IDENTITY_CLIENT_ID or set 'PAT', in the config file.") from ex
 
+        self.rest_api_kwargs['timeout'] = 5
+
         organization_url = self.config['organization_url']
         project = self.config['project']
         repository_name = self.config['repository_name']
