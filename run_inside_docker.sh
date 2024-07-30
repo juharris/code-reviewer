@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # nginx is used to serve the warmup request that Azure App Service sends.
-echo "Starting nginx"
-nginx
+echo "Starting nginx &"
+nginx &
 
 # Add Poetry to the path.
 export PATH="$HOME/.local/bin:$PATH"
