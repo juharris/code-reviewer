@@ -39,6 +39,7 @@ class Suggester:
             for suggestion_config in suggestions:
                 p = suggestion_config['pattern_regex']
                 replacement = suggestion_config['replacement']
+                inner_loop_count = 0
                 while inner_loop_count < loop_limit:
                     inner_loop_count += 1
                     suggestion, num_substitutions = p.subn(replacement, suggestion)
