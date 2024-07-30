@@ -16,6 +16,21 @@ def _test(expected: str, text: str, rule: Rule):
     assert suggestion == expected
 
 
+def test_suggest_remove():
+    text = "#pragma warning disable IDE1006 // Naming Styles"
+    expected = ""
+
+    rule: Rule = {
+        'suggestions': [
+            {
+                'pattern': '^.*$',
+                'replacement': ''
+            }
+        ]
+    }  # type: ignore
+    _test(expected, text, rule)
+
+
 def test_suggest_trim():
     text = "code code  "
     expected = "code code"
