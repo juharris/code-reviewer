@@ -29,12 +29,19 @@ class Suggester:
         suggestion = text
 
         # Keep applying suggestions until no more changes are made.
-        while True:
+        # Limit looping to prevent infinite loops.
+        loop_limit = 10
+        loop_count = 0
+        inner_loop_count = 0
+        while loop_count < loop_limit:
+            loop_count += 1
             found_matches = False
             for suggestion_config in suggestions:
                 p = suggestion_config['pattern_regex']
                 replacement = suggestion_config['replacement']
-                while True:
+                inner_loop_count = 0
+                while inner_loop_count < loop_limit:
+                    inner_loop_count += 1
                     suggestion, num_substitutions = p.subn(replacement, suggestion)
                     if num_substitutions > 0:
                         is_change_made = found_matches = True
