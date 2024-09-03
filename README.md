@@ -46,7 +46,7 @@ See the documentation and examples below for more details.
 # Setup
 Written using Python 3.10
 
-Example Python env initialization with Conda:
+Example Python environment initialization with Conda:
 ```shell
 conda create --yes --name code-reviewer python=3.10
 conda activate code-reviewer
@@ -56,6 +56,7 @@ conda activate code-reviewer
 See [here](https://python-poetry.org/docs/main).
 
 ## Install Dependencies
+Run
 ```shell
 poetry install
 ```
@@ -82,6 +83,11 @@ Scopes:
 * Project and Team: Read
 * Pull Request Threads: Read & Write
 * User Profile: Read
+
+If you use a PAT, you should expose it as an environment variable before reviewing pull requests, for example:
+```shell
+CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
+```
 
 ## Configuration File
 Rules are configured in a YAML file.
@@ -358,12 +364,12 @@ rules:
 ## Checking Pull Requests
 Run the script:
 ```shell
-CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
+python src/run.py config_path.yml
 ```
 
 You can also use a config file from a URL (must start with "https://" or "http://"):
 ```shell
-CR_ADO_PAT='YOUR PAT' python src/run.py https://mysite.com/config.yml
+python src/run.py https://mysite.com/config.yml
 ```
 
 The script will reload the config file for each run.

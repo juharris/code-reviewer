@@ -254,6 +254,9 @@ class Runner:
             except BaseException:
                 self.logger.exception("Error while trying to reset votes after changes for \"%s\" at %s", pr.title, pr_url)
 
+        pr_as_dict = pr.as_dict()
+        # import json;self.logger.debug("PR: %s", json.dumps(pr_as_dict))
+
         for rule in rules:
             # All checks must match.
             if (author_regex := rule.get('author_regex')) is not None:
@@ -275,6 +278,12 @@ class Runner:
             is_draft_req = rule.get('is_draft')
             if is_draft_req is not None and is_draft_req != pr.is_draft:
                 match_found = False
+
+            json_checks = rule.get('json_checks')
+            if json_checks is not None:
+                # TODO Call another method.
+                # TODO Support match type with NOT_ANY.
+                pass
 
             if not match_found:
                 continue

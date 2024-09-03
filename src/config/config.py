@@ -42,11 +42,18 @@ class JsonPathCheck(TypedDict):
     pattern: Optional[str]
     regex: Optional[re.Pattern]
 
+class JsonPathChecks(TypedDict):
+    match_type: MatchType
+    """
+    Determines how the combination of the checks should be evaluated.
+    """
+    checks: list[JsonPathCheck]
+
 
 class PolicyEvaluationChecks(TypedDict):
     match_type: MatchType
     """
-    Determines how the checks combination of the checks should be evaluated.
+    Determines how the combination of the checks should be evaluated.
     """
     evaluation_checks: list[JsonPathCheck]
 
@@ -80,6 +87,7 @@ class Rule(TypedDict):
     diff_pattern: Optional[str]
     diff_regex: Optional[re.Pattern]
     is_draft: Optional[bool]
+    json_checks: Optional[list[JsonPathChecks]]
     path_pattern: Optional[str]
     path_regex: Optional[re.Pattern]
     policy_checks: Optional[list[PolicyEvaluationChecks]]
