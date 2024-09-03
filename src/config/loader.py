@@ -96,6 +96,17 @@ class ConfigLoader:
                 if isinstance(vote, str):
                     rule['vote'] = map_vote(vote)
 
+                if (json_checks := rule.get('json_checks')) is not None:
+                    for json_check in json_checks:
+                        for check in json_check['checks']:
+                            check['json_path_'] = JSONPath(check['json_path'])
+                            if (pat := check.get('pattern')) is not None:
+                                check['regex'] = re.compile(pat)
+                        if (match_type := json_check.get('match_type')) is None:
+                            json_check['match_type'] = MatchType.ANY
+                        else:
+                            json_check['match_type'] = MatchType(match_type)
+
                 if (rule_policy_checks := rule.get('policy_checks')) is not None:
                     for rule_policy_check in rule_policy_checks:
                         for evaluation_check in rule_policy_check['evaluation_checks']:

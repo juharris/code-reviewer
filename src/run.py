@@ -31,7 +31,7 @@ from msrest.authentication import BasicAuthentication, OAuthTokenAuthentication
 
 from comment_search import CommentSearchResult, get_comment_id_marker
 from config import (ATTRIBUTES_WITH_PATTERNS, Config, ConfigLoader,
-                    JsonPathCheck, MatchType, PolicyEvaluationChecks, Rule)
+                    JsonPathCheck, JsonPathChecks, MatchType, PolicyEvaluationChecks, Rule)
 from file_diff import FileDiff
 from pr_review_state import PrReviewState
 from run_state import RunState
@@ -55,6 +55,9 @@ ADO_REST_API_AUTH_SCOPE = '499b84ac-1321-427f-aa17-267ca6975798/.default'
 @inject
 @dataclass
 class Runner:
+    """
+    Reviews pull requests.
+    """
     config_loader: ConfigLoader
     logger: logging.Logger
     suggester: Suggester
@@ -94,8 +97,9 @@ class Runner:
         if pathlib.Path(timestamp_file_path).exists():
             with open(timestamp_file_path, 'r') as f:
                 docker_image_build_timestamp = f.read().strip()
-                self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
-                                 f" | Docker Image Build Date: {docker_image_build_timestamp}")
+                self.logger.info("Current time: %s | Docker Image Build Date: %s",
+                                 datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+                                 docker_image_build_timestamp)
 
     def _make_comment_stat_key(self, comment: Comment) -> tuple:
         author: IdentityRef = comment.author  # type: ignore
@@ -254,7 +258,7 @@ class Runner:
             except BaseException:
                 self.logger.exception("Error while trying to reset votes after changes for \"%s\" at %s", pr.title, pr_url)
 
-        pr_as_dict = pr.as_dict()
+        pr_as_dict: dict = pr.as_dict()
         # import json;self.logger.debug("PR: %s", json.dumps(pr_as_dict))
 
         for rule in rules:
@@ -279,11 +283,12 @@ class Runner:
             if is_draft_req is not None and is_draft_req != pr.is_draft:
                 match_found = False
 
+            if not match_found:
+                continue
+
             json_checks = rule.get('json_checks')
             if json_checks is not None:
-                # TODO Call another method.
-                # TODO Support match type with NOT_ANY.
-                pass
+                match_found = self.check_json_checks(json_checks, pr_as_dict)
 
             if not match_found:
                 continue
@@ -291,7 +296,7 @@ class Runner:
             # Check policy evaluations before checking files because there are often issues when checking files.
             rule_policy_checks = rule.get('policy_checks')
             if rule_policy_checks is not None:
-                match_found, policy_evaluations = self.check_policies(pr, pr_url, policy_evaluations, rule_policy_checks)
+                match_found, policy_evaluations = self.check_policies(pr, policy_evaluations, rule_policy_checks)
 
                 if not match_found:
                     continue
@@ -557,9 +562,24 @@ class Runner:
                     label_info = WebApiTagDefinition(name=tag)
                 pr.labels.append(label_info)
 
+    def check_json_checks(self,
+                          json_checks: list[JsonPathChecks],
+                          pr_as_dict: dict) -> bool:
+        # Make sure that all checks match.
+        result = True
+        for json_check in json_checks:
+            checks = json_check['checks']
+            result = any(self.is_check_match(check, pr_as_dict) for check in checks)
+            match_type = json_check['match_type']
+            if match_type == MatchType.NOT_ANY:
+                result = not result
+            if not result:
+                break
+
+        return result
+
     def check_policies(self,
                        pr: GitPullRequest,
-                       pr_url: str,
                        policy_evaluations: Optional[list[dict]],
                        rule_policy_checks: list[PolicyEvaluationChecks]) -> tuple[bool,
                                                                                   list[dict]]:
@@ -572,7 +592,7 @@ class Runner:
             # Takes too much space in output. Feel free to temporarily uncomment for debugging.
             """
             if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2), pr_url)
+                self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2))
             """
         all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
         return all_rules_match, policy_evaluations
