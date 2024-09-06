@@ -1,5 +1,3 @@
-import re
-
 from config import Rule
 from suggestions import Suggester
 

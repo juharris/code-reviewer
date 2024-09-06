@@ -13,7 +13,7 @@ from jsonpath import JSONPath
 from suggestions import Suggester
 from voting import map_vote
 from .config import (ATTRIBUTES_WITH_PATTERNS, DEFAULT_MAX_REQUEUES_PER_RUN,
-                     Config, MatchType, RequeueConfig)
+                     Config, JsonPathCheck, JsonPathChecks, MatchType, RequeueConfig)
 
 
 @dataclass
@@ -97,15 +97,7 @@ class ConfigLoader:
                     rule['vote'] = map_vote(vote)
 
                 if (json_checks := rule.get('json_checks')) is not None:
-                    for json_check in json_checks:
-                        for check in json_check['checks']:
-                            check['json_path_'] = JSONPath(check['json_path'])
-                            if (pat := check.get('pattern')) is not None:
-                                check['regex'] = re.compile(pat)
-                        if (match_type := json_check.get('match_type')) is None:
-                            json_check['match_type'] = MatchType.ANY
-                        else:
-                            json_check['match_type'] = MatchType(match_type)
+                    self.init_json_path_checks(json_checks)
 
                 if (rule_policy_checks := rule.get('policy_checks')) is not None:
                     for rule_policy_check in rule_policy_checks:
@@ -132,3 +124,19 @@ class ConfigLoader:
 
             self.logger.info("Loaded configuration with %d rule(s).", len(rules))
         return ConfigLoadInfo(self.config, is_fresh)
+
+    @staticmethod
+    def init_json_path_checks(json_checks: list[JsonPathChecks]):
+        for json_check in json_checks:
+            for check in json_check['checks']:
+                ConfigLoader.init_json_path_check(check)
+            if (match_type := json_check.get('match_type')) is None:
+                json_check['match_type'] = MatchType.ANY
+            else:
+                json_check['match_type'] = MatchType(match_type)
+
+    @staticmethod
+    def init_json_path_check(check: JsonPathCheck):
+        check['json_path_'] = JSONPath(check['json_path'])
+        if (pat := check.get('pattern')) is not None:
+            check['regex'] = re.compile(pat)

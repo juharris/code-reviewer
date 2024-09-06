@@ -42,6 +42,7 @@ class JsonPathCheck(TypedDict):
     pattern: Optional[str]
     regex: Optional[re.Pattern]
 
+
 class JsonPathChecks(TypedDict):
     match_type: MatchType
     """
@@ -87,6 +88,7 @@ class Rule(TypedDict):
     diff_pattern: Optional[str]
     diff_regex: Optional[re.Pattern]
     is_draft: Optional[bool]
+    # FIXME Find a better name.
     json_checks: Optional[list[JsonPathChecks]]
     path_pattern: Optional[str]
     path_regex: Optional[re.Pattern]

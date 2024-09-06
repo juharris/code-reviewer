@@ -27,6 +27,10 @@ Each rule can have regular expressions for:
 * source branch
 * target branch
 
+Many other properties can be used to condition a rule using JSON Paths for values in the [`GitPullRequest`](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.2&tabs=HTTP#gitpullrequest) object such as checking:
+* reviewers: `'$.reviewers[*].unique_name'`
+* a reviewer's vote: `$.reviewers[?(@.unique_name== "email")].vote`
+
 See the documentation and examples below for more details.
 
 ## Actions
