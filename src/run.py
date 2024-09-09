@@ -33,6 +33,7 @@ from comment_search import CommentSearchResult, get_comment_id_marker
 from config import (ATTRIBUTES_WITH_PATTERNS, Config, ConfigLoader,
                     JsonPathCheck, MatchType, PolicyEvaluationChecks, Rule)
 from file_diff import FileDiff
+from matcher_checker import MatcherChecker
 from pr_review_state import PrReviewState
 from run_state import RunState
 from suggestions import Suggester
@@ -44,7 +45,7 @@ from voting import NO_VOTE, is_vote_allowed, map_int_vote
 
 branch_pat = re.compile('^refs/heads/')
 
-log_start = "*" * 100
+LOG_START = "*" * 100
 
 POLICY_DISPLAY_NAME_JSONPATH = JSONPath('$.configuration.settings.displayName')
 
@@ -55,8 +56,12 @@ ADO_REST_API_AUTH_SCOPE = '499b84ac-1321-427f-aa17-267ca6975798/.default'
 @inject
 @dataclass
 class Runner:
+    """
+    Reviews pull requests.
+    """
     config_loader: ConfigLoader
     logger: logging.Logger
+    matcher_checker: MatcherChecker
     suggester: Suggester
 
     config: Config = field(init=False)
@@ -94,8 +99,9 @@ class Runner:
         if pathlib.Path(timestamp_file_path).exists():
             with open(timestamp_file_path, 'r') as f:
                 docker_image_build_timestamp = f.read().strip()
-                self.logger.info(f"Current time: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
-                                 f" | Docker Image Build Date: {docker_image_build_timestamp}")
+                self.logger.info("Current time: %s | Docker Image Build Date: %s",
+                                 datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+                                 docker_image_build_timestamp)
 
     def _make_comment_stat_key(self, comment: Comment) -> tuple:
         author: IdentityRef = comment.author  # type: ignore
@@ -110,11 +116,11 @@ class Runner:
 
     def display_stats(self) -> None:
         if self.logger.isEnabledFor(logging.INFO) and len(self.comment_stats) > 0:
-            s = f"{log_start}\nComment stats:\nCount | Author & Comment Type\n"
+            s = f"{LOG_START}\nComment stats:\nCount | Author & Comment Type\n"
             num_top_commenters_to_show = self.config.get('num_top_commenters_to_show', 12)
             for (name, unique_name, comment_type), count in self.comment_stats.most_common(num_top_commenters_to_show):
                 s += f"  {count: 5d} | {name} ({unique_name}) ({comment_type})\n"
-            s += log_start
+            s += LOG_START
             self.logger.info(s)
 
     def _get_token(self) -> str:
@@ -216,7 +222,7 @@ class Runner:
 
         pr_author: IdentityRef = pr.created_by  # type: ignore
         reviewers: list[IdentityRefWithVote] = pr.reviewers  # type: ignore
-        self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", log_start, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+        self.logger.debug(f"%s\n%s\nBy %s (%s)\n%s", LOG_START, pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
         reviewer: Optional[IdentityRefWithVote] = None
         for r in reviewers:
@@ -254,6 +260,9 @@ class Runner:
             except BaseException:
                 self.logger.exception("Error while trying to reset votes after changes for \"%s\" at %s", pr.title, pr_url)
 
+        pr_as_dict: dict = pr.as_dict()
+        # import json;self.logger.debug("PR: %s", json.dumps(pr_as_dict))
+
         for rule in rules:
             # All checks must match.
             if (author_regex := rule.get('author_regex')) is not None:
@@ -279,10 +288,17 @@ class Runner:
             if not match_found:
                 continue
 
+            matchers = rule.get('matchers')
+            if matchers is not None:
+                match_found = self.matcher_checker.check_matchers(matchers, pr_as_dict)
+
+            if not match_found:
+                continue
+
             # Check policy evaluations before checking files because there are often issues when checking files.
             rule_policy_checks = rule.get('policy_checks')
             if rule_policy_checks is not None:
-                match_found, policy_evaluations = self.check_policies(pr, pr_url, policy_evaluations, rule_policy_checks)
+                match_found, policy_evaluations = self.check_policies(pr, policy_evaluations, rule_policy_checks)
 
                 if not match_found:
                     continue
@@ -550,7 +566,6 @@ class Runner:
 
     def check_policies(self,
                        pr: GitPullRequest,
-                       pr_url: str,
                        policy_evaluations: Optional[list[dict]],
                        rule_policy_checks: list[PolicyEvaluationChecks]) -> tuple[bool,
                                                                                   list[dict]]:
@@ -563,7 +578,7 @@ class Runner:
             # Takes too much space in output. Feel free to temporarily uncomment for debugging.
             """
             if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2), pr_url)
+                self.logger.debug("Policy evaluations: %s\nfor %s", json.dumps(policy_evaluations, indent=2))
             """
         all_rules_match = all(self.is_rule_match_policy_evals(r, policy_evaluations) for r in rule_policy_checks)
         return all_rules_match, policy_evaluations
@@ -583,20 +598,7 @@ class Runner:
         """
         :returns: `True` if the policy evaluation matches the rule.
         """
-        return all(self.is_check_match(check, policy_evaluation) for check in rule_policy_check['evaluation_checks'])
-
-    def is_check_match(self, check: JsonPathCheck, data: dict) -> bool:
-        """
-        :returns: `True` if the check matches the data.
-        """
-        matches = check['json_path_'].search(data)
-        if matches is None or len(matches) == 0:
-            return False
-        self.logger.debug("JSON Path '%s' matches: %s", check['json_path'], matches)
-        if (pat := check.get('regex')) is not None:
-            # `None` can be in matches maybe when a value such as a status is not set?
-            return any(m is not None and pat.match(str(m)) for m in matches)
-        return True
+        return all(self.matcher_checker.is_check_match(check, policy_evaluation) for check in rule_policy_check['evaluation_checks'])
 
     def check_text_diff(self,
                         pr: GitPullRequest,
@@ -1048,7 +1050,7 @@ class Runner:
             if run_state.num_requeues >= max_requeues_per_run:
                 self.logger.debug("Not requeuing \"%s\" because the maximum number of requeues has been reached. URL: %s", pr.title, pr_url)
                 break
-            if all(self.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
+            if all(self.matcher_checker.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
                 name_matches = POLICY_DISPLAY_NAME_JSONPATH.search(policy_evaluation)
                 name = name_matches[0] if (name_matches is not None and len(name_matches) > 0) else None
                 evaluation_id = policy_evaluation.get('evaluation_id')

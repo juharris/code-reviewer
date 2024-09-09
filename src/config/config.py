@@ -35,7 +35,7 @@ class MatchType(Enum):
 
 class JsonPathCheck(TypedDict):
     """
-    A generic way to check if a dictionary matches a check.
+    A generic way to check if a dictionary from JSON matches a check.
     """
     json_path: str
     json_path_: JSONPath
@@ -43,12 +43,32 @@ class JsonPathCheck(TypedDict):
     regex: Optional[re.Pattern]
 
 
-class PolicyEvaluationChecks(TypedDict):
+class JsonPathChecks(TypedDict):
+    """
+    Contains checks to see if values as JSON Paths match.
+    """
     match_type: MatchType
     """
-    Determines how the checks combination of the checks should be evaluated.
+    Determines how the combination of the checks should be evaluated.
+    """
+    checks: list[JsonPathCheck]
+    """
+    The checks that all must match.
+    """
+
+
+class PolicyEvaluationChecks(TypedDict):
+    """
+    Contains checks to see if values as JSON Paths match.
+    """
+    match_type: MatchType
+    """
+    Determines how the combination of the checks should be evaluated.
     """
     evaluation_checks: list[JsonPathCheck]
+    """
+    The checks that all must match.
+    """
 
 
 class Suggestion(TypedDict):
@@ -72,6 +92,9 @@ class Suggestion(TypedDict):
 
 
 class Rule(TypedDict):
+    """
+    A rule to enforce for a pull request.
+    """
     # Checks (in alphabetical order)
     author_pattern: Optional[str]
     author_regex: Optional[re.Pattern]
@@ -80,6 +103,7 @@ class Rule(TypedDict):
     diff_pattern: Optional[str]
     diff_regex: Optional[re.Pattern]
     is_draft: Optional[bool]
+    matchers: Optional[list[JsonPathChecks]]
     path_pattern: Optional[str]
     path_regex: Optional[re.Pattern]
     policy_checks: Optional[list[PolicyEvaluationChecks]]

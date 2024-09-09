@@ -27,6 +27,10 @@ Each rule can have regular expressions for:
 * source branch
 * target branch
 
+Many other properties can be used to condition a rule using JSON Paths for values in the [`GitPullRequest`](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.2&tabs=HTTP#gitpullrequest) object such as checking:
+* reviewers: `'$.reviewers[*].unique_name'`
+* a reviewer's vote: `$.reviewers[?(@.unique_name== "email")].vote`
+
 See the documentation and examples below for more details.
 
 ## Actions
@@ -46,7 +50,7 @@ See the documentation and examples below for more details.
 # Setup
 Written using Python 3.10
 
-Example Python env initialization with Conda:
+Example Python environment initialization with Conda:
 ```shell
 conda create --yes --name code-reviewer python=3.10
 conda activate code-reviewer
@@ -56,6 +60,7 @@ conda activate code-reviewer
 See [here](https://python-poetry.org/docs/main).
 
 ## Install Dependencies
+Run
 ```shell
 poetry install
 ```
@@ -82,6 +87,11 @@ Scopes:
 * Project and Team: Read
 * Pull Request Threads: Read & Write
 * User Profile: Read
+
+If you use a PAT, you should expose it as an environment variable before reviewing pull requests, for example:
+```shell
+CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
+```
 
 ## Configuration File
 Rules are configured in a YAML file.
@@ -152,6 +162,12 @@ wait_after_review_s: 666
 # Branch Patterns
 # * source_ref_name_pattern: A regex pattern that the source branch must match. Source branches usually start with 'refs/heads/'.
 # * target_ref_name_pattern: A regex pattern that the source branch must match. E.g., 'refs/heads/main'.
+
+# * matchers: A list of checks to run based on the JSON for the `GitPullRequest` object: https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.2&tabs=HTTP#gitpullrequest.
+# Every check in the `checks` list must match at least one of values found for the corresponding JSON Path in the `GitPullRequest` object.
+# The `match_type` property can be set to 'not_any' to change the behavior to require that none of the policy evaluation match the checks in `evaluation_checks`.
+# Note that there can be multiple `checks` lists in a rule so that a combination ('AND') of checks can be used to only perform actions based on the output of multiple policy evaluations.
+# The examples below show how to use the JSON Paths and `match_type` to check the reviewers and their votes.
 
 # * policy_checks: A list of checks to run for the output of policy evaluations (build checks).
 # Every check in the `evaluation_checks` list must match at least one of the policy evaluations for the entire rule to match.
@@ -296,6 +312,22 @@ rules:
     add_tags:
       - "hot fix"
 
+  # Don't allow mentioning "hack" when a certain person is a reviewer:
+  - diff_pattern: '(?i).*\bhack\b'
+    matchers:
+      - checks:
+        - json_path: '$.reviewers[*].unique_name'
+          pattern: '(?i)^name@company\.com$'
+    comment: "Please do not mention \"hack\" in the code. If we need to do something that is not ideal, then we must explain why. If we are doing something that is not ideal, then it's important to explain why so that someone else doesn't come along and 'fix' it without understanding the reason for the 'hack'."
+
+  # Reject when another specific reviewer rejects:
+  - matchers:
+      - checks:
+        - json_path: '$.reviewers[?(@.unique_name== "name@company.com")].vote'
+          pattern: '^-10$'
+    vote: REJECT
+
+
   # REJECT based on policy evaluations (build checks).
   - policy_checks:
     - evaluation_checks:
@@ -358,12 +390,12 @@ rules:
 ## Checking Pull Requests
 Run the script:
 ```shell
-CR_ADO_PAT='YOUR PAT' python src/run.py config_path.yml
+python src/run.py config_path.yml
 ```
 
 You can also use a config file from a URL (must start with "https://" or "http://"):
 ```shell
-CR_ADO_PAT='YOUR PAT' python src/run.py https://mysite.com/config.yml
+python src/run.py https://mysite.com/config.yml
 ```
 
 The script will reload the config file for each run.

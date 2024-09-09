@@ -1,3 +1,3 @@
 [FORMAT]
-indent-string=\t
-max-line-length=139
+indent-string="    "
+max-line-length=140
