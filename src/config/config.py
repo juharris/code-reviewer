@@ -88,8 +88,7 @@ class Rule(TypedDict):
     diff_pattern: Optional[str]
     diff_regex: Optional[re.Pattern]
     is_draft: Optional[bool]
-    # FIXME Find a better name.
-    json_checks: Optional[list[JsonPathChecks]]
+    matchers: Optional[list[JsonPathChecks]]
     path_pattern: Optional[str]
     path_regex: Optional[re.Pattern]
     policy_checks: Optional[list[PolicyEvaluationChecks]]

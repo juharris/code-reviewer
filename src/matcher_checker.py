@@ -11,23 +11,23 @@ from config import JsonPathCheck, JsonPathChecks, MatchType
 
 @inject
 @dataclass
-class JsonChecker:
+class MatcherChecker:
     """
     Checks JSON Paths.
     """
     logger: logging.Logger
 
-    def check_json_checks(self,
-                          json_checks: list[JsonPathChecks],
+    def check_matchers(self,
+                          matchers: list[JsonPathChecks],
                           pr_as_dict: dict) -> bool:
         """
-        :returns: `True` if all checks match.
+        :returns: `True` if all checks match; otherwise, `False`.
         """
         result = True
-        for json_check in json_checks:
-            checks = json_check['checks']
+        for matcher in matchers:
+            checks = matcher['checks']
             result = any(self.is_check_match(check, pr_as_dict) for check in checks)
-            match_type = json_check['match_type']
+            match_type = matcher['match_type']
             if match_type == MatchType.NOT_ANY:
                 result = not result
             if not result:
@@ -37,7 +37,7 @@ class JsonChecker:
 
     def is_check_match(self, check: JsonPathCheck, data: dict) -> bool:
         """
-        :returns: `True` if the check matches the data.
+        :returns: `True` if the check matches the data; otherwise, `False`.
         """
         matches = check['json_path_'].search(data)
         if matches is None or len(matches) == 0:

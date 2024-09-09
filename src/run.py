@@ -33,7 +33,7 @@ from comment_search import CommentSearchResult, get_comment_id_marker
 from config import (ATTRIBUTES_WITH_PATTERNS, Config, ConfigLoader,
                     JsonPathCheck, MatchType, PolicyEvaluationChecks, Rule)
 from file_diff import FileDiff
-from json_checker import JsonChecker
+from matcher_checker import MatcherChecker
 from pr_review_state import PrReviewState
 from run_state import RunState
 from suggestions import Suggester
@@ -61,7 +61,7 @@ class Runner:
     """
     config_loader: ConfigLoader
     logger: logging.Logger
-    json_checker: JsonChecker
+    matcher_checker: MatcherChecker
     suggester: Suggester
 
     config: Config = field(init=False)
@@ -288,9 +288,9 @@ class Runner:
             if not match_found:
                 continue
 
-            json_checks = rule.get('json_checks')
-            if json_checks is not None:
-                match_found = self.check_json_checks(json_checks, pr_as_dict)
+            matchers = rule.get('matchers')
+            if matchers is not None:
+                match_found = self.matcher_checker.check_matchers(matchers, pr_as_dict)
 
             if not match_found:
                 continue
@@ -598,7 +598,7 @@ class Runner:
         """
         :returns: `True` if the policy evaluation matches the rule.
         """
-        return all(self.json_checker.is_check_match(check, policy_evaluation) for check in rule_policy_check['evaluation_checks'])
+        return all(self.matcher_checker.is_check_match(check, policy_evaluation) for check in rule_policy_check['evaluation_checks'])
 
     def check_text_diff(self,
                         pr: GitPullRequest,
@@ -1050,7 +1050,7 @@ class Runner:
             if run_state.num_requeues >= max_requeues_per_run:
                 self.logger.debug("Not requeuing \"%s\" because the maximum number of requeues has been reached. URL: %s", pr.title, pr_url)
                 break
-            if all(self.json_checker.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
+            if all(self.matcher_checker.is_check_match(rule_policy_check, policy_evaluation) for rule_policy_check in requeue):
                 name_matches = POLICY_DISPLAY_NAME_JSONPATH.search(policy_evaluation)
                 name = name_matches[0] if (name_matches is not None and len(name_matches) > 0) else None
                 evaluation_id = policy_evaluation.get('evaluation_id')

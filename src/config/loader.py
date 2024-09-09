@@ -96,8 +96,8 @@ class ConfigLoader:
                 if isinstance(vote, str):
                     rule['vote'] = map_vote(vote)
 
-                if (json_checks := rule.get('json_checks')) is not None:
-                    self.init_json_path_checks(json_checks)
+                if (matchers := rule.get('matchers')) is not None:
+                    self.init_matchers(matchers)
 
                 if (rule_policy_checks := rule.get('policy_checks')) is not None:
                     for rule_policy_check in rule_policy_checks:
@@ -126,17 +126,23 @@ class ConfigLoader:
         return ConfigLoadInfo(self.config, is_fresh)
 
     @staticmethod
-    def init_json_path_checks(json_checks: list[JsonPathChecks]):
-        for json_check in json_checks:
-            for check in json_check['checks']:
+    def init_matchers(matchers: list[JsonPathChecks]) -> None:
+        """
+        Initialize the JSON Path checks.
+        """
+        for matcher in matchers:
+            for check in matcher['checks']:
                 ConfigLoader.init_json_path_check(check)
-            if (match_type := json_check.get('match_type')) is None:
-                json_check['match_type'] = MatchType.ANY
+            if (match_type := matcher.get('match_type')) is None:
+                matcher['match_type'] = MatchType.ANY
             else:
-                json_check['match_type'] = MatchType(match_type)
+                matcher['match_type'] = MatchType(match_type)
 
     @staticmethod
-    def init_json_path_check(check: JsonPathCheck):
+    def init_json_path_check(check: JsonPathCheck) -> None:
+        """
+        Initialize the JSON Path check.
+        """
         check['json_path_'] = JSONPath(check['json_path'])
         if (pat := check.get('pattern')) is not None:
             check['regex'] = re.compile(pat)
