@@ -18,8 +18,8 @@ class MatcherChecker:
     logger: logging.Logger
 
     def check_matchers(self,
-                          matchers: list[JsonPathChecks],
-                          pr_as_dict: dict) -> bool:
+                       matchers: list[JsonPathChecks],
+                       pr_as_dict: dict) -> bool:
         """
         :returns: `True` if all checks match; otherwise, `False`.
         """
