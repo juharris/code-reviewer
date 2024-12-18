@@ -4,6 +4,7 @@ import logging
 APPROVE_VOTE = 10
 APPROVE_WITH_SUGGESTIONS_VOTE = 5
 NO_VOTE = 0
+WAIT = -5
 
 
 def map_vote(vote: Optional[int | str]) -> Optional[int]:
@@ -15,7 +16,7 @@ def map_vote(vote: Optional[int | str]) -> Optional[int]:
         case 'reject':
             return -10
         case 'wait':
-            return -5
+            return WAIT
         case 'none' | 'reset':
             return NO_VOTE
         case 'approve_with_suggestions':
