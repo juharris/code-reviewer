@@ -25,6 +25,48 @@ from voting import APPROVE_VOTE, NO_VOTE, WAIT_VOTE
 TESTS_DIR = os.path.dirname(__file__)
 
 
+def test_review_pr_no_rules_reset_votes_after_changes_no_reset():
+    """
+    This tests the scenario where there is a manual vote on a PR that should not be reset.
+    """
+    config_path = os.path.join(TESTS_DIR, "configs/no_rules_reset_votes_after_changes.yml")
+    inj = Injector([
+        ConfigModule(config_path),
+        LoggingModule,
+    ])
+    runner = inj.get(Runner)
+    reload_info = runner.config_loader.load_config()
+    runner.config = reload_info.config
+    runner.git_client = mock.MagicMock()
+    runner.git_client.get_threads.return_value = [
+        GitPullRequestCommentThread(
+            comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
+            last_updated_date=datetime(2024, 12, 19),
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
+        ),
+    ]
+    runner.git_client.get_pull_request_iterations.return_value = [
+        GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
+    ]
+
+    pr_id = 123
+    pr = GitPullRequest(
+        created_by=IdentityRef(display_name="P.R. Author"),
+        is_draft=False,
+        pull_request_id=pr_id,
+        repository=GitRepository(),
+        reviewers=[
+            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
+        ],
+        status="active",
+    )
+    pr_url = f"https://example.com/pr/{pr_id}"
+
+    runner.review_pr(pr, pr_url, run_state=None)
+
+    runner.git_client.create_pull_request_reviewer.assert_not_called()
+
+
 @mock.patch.object(requests, "get")
 def test_review_pr_vote_based_on_diff_pattern_reset(mock_requests_get):
     """
