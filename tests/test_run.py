@@ -19,7 +19,7 @@ from config.config_module import ConfigModule
 from file_diff import Block, Diff
 from logger import LoggingModule
 from run import Runner
-from voting import APPROVE_VOTE, NO_VOTE, WAIT
+from voting import APPROVE_VOTE, NO_VOTE, WAIT_VOTE
 
 
 TESTS_DIR = os.path.dirname(__file__)
@@ -44,7 +44,7 @@ def test_review_pr_vote_based_on_diff_pattern_reset(mock_requests_get):
         GitPullRequestCommentThread(
             comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
             last_updated_date=datetime(2024, 12, 19),
-            properties={"CodeReviewVoteResult": {"$value": WAIT}},
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
         ),
     ]
     runner.git_client.get_pull_request_iterations.return_value = [
@@ -77,7 +77,7 @@ def test_review_pr_vote_based_on_diff_pattern_reset(mock_requests_get):
         pull_request_id=pr_id,
         repository=GitRepository(),
         reviewers=[
-            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT),
+            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
         ],
         status="active",
     )
@@ -112,7 +112,7 @@ def test_review_pr_vote_based_on_diff_pattern_no_reset(mock_requests_get):
         GitPullRequestCommentThread(
             comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
             last_updated_date=datetime(2024, 12, 19),
-            properties={"CodeReviewVoteResult": {"$value": WAIT}},
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
         ),
         GitPullRequestCommentThread(
             comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
@@ -179,7 +179,7 @@ def test_review_pr_vote_based_on_description():
         GitPullRequestCommentThread(
             comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
             last_updated_date=datetime(2024, 12, 19),
-            properties={"CodeReviewVoteResult": {"$value": WAIT}},
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
         ),
     ]
     runner.git_client.get_pull_request_iterations.return_value = [
@@ -194,7 +194,7 @@ def test_review_pr_vote_based_on_description():
         pull_request_id=pr_id,
         repository=GitRepository(),
         reviewers=[
-            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT),
+            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
         ],
         status="active",
     )
