@@ -14,6 +14,7 @@ reset_votes_after_changes:
 
 rules:
   - vote: wait
-    description_pattern: 'forbidden phrase'
-    comment: 'Please do not use the forbidden phrase in the description.'
-    comment_id: 'description-forbidden-phrase'
+    path_pattern: '\.py$'
+    diff_pattern: '\.deprecated_method\(\)'
+    comment: 'Please do not use the deprecated method `deprecated_method`. Use `new_method` instead.'
+    comment_id: 'deprecated-method'
