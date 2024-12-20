@@ -73,14 +73,8 @@ class ConfigLoader:
                 if requeue_config.get('max_per_run') is None:
                     requeue_config['max_per_run'] = DEFAULT_MAX_REQUEUES_PER_RUN
 
-            reset_votes_after_changes = config.get('reset_votes_after_changes')
-            if reset_votes_after_changes is not None:
-                assert isinstance(
-                    reset_votes_after_changes, list), f"reset_votes_after_changes must be a list. Got: {reset_votes_after_changes} with type: {type(reset_votes_after_changes)}"
-                reset_votes_after_changes = set(map_vote(vote) for vote in reset_votes_after_changes)
-                assert all(
-                    vote is not None for vote in reset_votes_after_changes), f"reset_votes_after_changes must be a list of integers. Got: {reset_votes_after_changes}"
-                config['reset_votes_after_changes'] = reset_votes_after_changes  # type: ignore
+            self._load_vote_list(config, 'reset_votes_after_changes')
+            self._load_vote_list(config, 'reset_votes_if_no_rule_votes')
 
             rules = config['rules']
             for rule in rules:
@@ -124,6 +118,16 @@ class ConfigLoader:
 
             self.logger.info("Loaded configuration with %d rule(s).", len(rules))
         return ConfigLoadInfo(self.config, is_fresh)
+
+    def _load_vote_list(self, config, field_name):
+        vote_list = config.get(field_name)
+        if vote_list is not None:
+            assert isinstance(
+                vote_list, list), f"{field_name} must be a list. Got: {vote_list} with type: {type(vote_list)}"
+            vote_list = set(map_vote(vote) for vote in vote_list)
+            assert all(
+                vote is not None for vote in vote_list), f"{field_name} must be a list of integers. Got: {vote_list}"
+            config[field_name] = vote_list  # type: ignore
 
     @staticmethod
     def init_matchers(matchers: list[JsonPathChecks]) -> None:

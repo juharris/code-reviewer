@@ -190,6 +190,7 @@ class Config(TypedDict):
     wait_after_review_s: Optional[int]
 
     reset_votes_after_changes: Optional[Collection[int]]
+    reset_votes_if_no_rule_votes: Optional[Collection[int]]
 
     rules: list[Rule]
 

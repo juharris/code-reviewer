@@ -37,7 +37,7 @@ from matcher_checker import MatcherChecker
 from pr_review_state import PrReviewState
 from run_state import RunState
 from suggestions import Suggester
-from voting import NO_VOTE, is_vote_allowed, map_int_vote
+from voting import NO_VOTE, is_vote_allowed, is_vote_set, map_int_vote
 
 # See
 # https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP
@@ -260,6 +260,12 @@ class Runner:
             except BaseException:
                 self.logger.exception("Error while trying to reset votes after changes for \"%s\" at %s", pr.title, pr_url)
 
+        reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
+        should_reset_vote = False
+        if reset_votes_if_no_rule_votes is not None and is_vote_set(reviewer.vote) and reviewer.vote in reset_votes_if_no_rule_votes:
+            reviewer.vote = NO_VOTE
+            should_reset_vote = True
+
         pr_as_dict: dict = pr.as_dict()
         # import json;self.logger.debug("PR: %s", json.dumps(pr_as_dict))
 
@@ -371,6 +377,14 @@ class Runner:
                     self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
                                      pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
+        # Second half of the implementation of reset_votes_if_no_rule_votes.
+        if should_reset_vote and reviewer.vote == NO_VOTE:
+            if not is_dry_run:
+                self.logger.info("RESETTING VOTE because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
+                self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+            else:
+                self.logger.info("Would reset vote because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
+
     def check_votes(self,
                     pr: GitPullRequest,
                     pr_url: str,
@@ -379,7 +393,7 @@ class Runner:
                     reviewer: IdentityRefWithVote,
                     reset_votes_after_changes: Collection[int],
                     threads: Optional[list[GitPullRequestCommentThread]]) -> list[GitPullRequestCommentThread] | None:
-        if pr.is_draft or reviewer.vote not in reset_votes_after_changes:
+        if pr.is_draft or not is_vote_set(reviewer.vote) or reviewer.vote not in reset_votes_after_changes:
             # Nothing to reset.
             return threads
 

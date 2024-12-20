@@ -56,11 +56,15 @@ def map_int_vote(vote: int) -> str | None:
 
 def is_vote_allowed(current_vote: int | None, new_vote: int | None) -> bool:
     """
-    Only vote if the new vote is more rejective (more negative) than the current vote,
+    Only vote if the new vote is more rejective (more negative) than the current vote or if
     the current vote is not set and the new vote is approve or approve with suggestions.
-    This is to avoid approving if someone has already voted.
+    This is to avoid approving if someone using the same user account has already voted.
     """
     return new_vote is not None \
         and (current_vote is None
              or new_vote < current_vote
              or (current_vote == NO_VOTE and new_vote > current_vote))
+
+
+def is_vote_set(vote: int | None) -> bool:
+    return vote is not None and vote != NO_VOTE

@@ -6,7 +6,7 @@ user_id: 'code_reviewer_user_id'
 
 log_level: DEBUG
 
-reset_votes_after_changes:
+reset_votes_if_no_rule_votes:
   - APPROVE
   - APPROVE_WITH_SUGGESTIONS
   - WAIT
