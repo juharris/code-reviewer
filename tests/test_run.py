@@ -12,6 +12,8 @@ from azure.devops.released.git import (
     GitRepository,
     IdentityRef,
     IdentityRefWithVote,
+    WebApiCreateTagRequestData,
+    WebApiTagDefinition,
 )
 from injector import Injector
 import requests
@@ -87,6 +89,7 @@ def test_review_pr_vote_based_on_diff_pattern_reset(mock_requests_get):
     runner = inj.get(Runner)
     reload_info = runner.config_loader.load_config()
     runner.config = reload_info.config
+    runner.rest_api_kwargs = {}
     runner.git_client = mock.MagicMock()
     runner.git_client.get_threads.return_value = [
         GitPullRequestCommentThread(
@@ -160,6 +163,7 @@ def test_review_pr_vote_based_on_diff_pattern_no_reset(mock_requests_get):
     runner = inj.get(Runner)
     reload_info = runner.config_loader.load_config()
     runner.config = reload_info.config
+    runner.rest_api_kwargs = {}
     runner.git_client = mock.MagicMock()
     runner.git_client.get_threads.return_value = [
         GitPullRequestCommentThread(
@@ -232,6 +236,7 @@ def test_review_pr_vote_based_on_description_vote(mock_requests_get):
     runner = inj.get(Runner)
     reload_info = runner.config_loader.load_config()
     runner.config = reload_info.config
+    runner.rest_api_kwargs = {}
     runner.git_client = mock.MagicMock()
     runner.git_client.get_threads.return_value = []
     runner.git_client.get_pull_request_iterations.return_value = [
@@ -370,3 +375,116 @@ def test_review_pr_vote_based_on_description_no_double_reset():
     runner.review_pr(pr, pr_url, run_state=None)
 
     runner.git_client.create_pull_request_reviewer.assert_not_called()
+
+
+def test_review_pr_rule_based_on_vote_no_reset():
+    """
+    This tests the scenario where a rule checks for a vote that is already present on the PR and then the vote is
+    reset because no rule voted.
+    """
+    config_path = os.path.join(TESTS_DIR, "configs/rule_based_on_vote_no_reset.yml")
+    inj = Injector([
+        ConfigModule(config_path),
+        LoggingModule,
+    ])
+    runner = inj.get(Runner)
+    reload_info = runner.config_loader.load_config()
+    runner.config = reload_info.config
+    runner.git_client = mock.MagicMock()
+    runner.git_client.get_threads.return_value = [
+        GitPullRequestCommentThread(
+            comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
+            last_updated_date=datetime(2024, 12, 19),
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
+        ),
+    ]
+    runner.git_client.get_pull_request_iterations.return_value = [
+        GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
+    ]
+    runner.git_client.create_pull_request_label.return_value = WebApiTagDefinition(name="wait")
+
+    # The PR ID should be unique across test cases.
+    pr_id = 160160
+    pr = GitPullRequest(
+        created_by=IdentityRef(display_name="P.R. Author"),
+        is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
+        pull_request_id=pr_id,
+        repository=GitRepository(),
+        reviewers=[
+            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
+        ],
+        source_ref_name=f"branch{pr_id}",
+        status="active",
+        target_ref_name="master",
+    )
+    pr_url = f"https://example.com/pr/{pr_id}"
+
+    runner.review_pr(pr, pr_url, run_state=None)
+
+    assert pr.labels == [WebApiTagDefinition(name="wait")]
+    runner.git_client.create_pull_request_label.assert_called_once()
+    call_args = runner.git_client.create_pull_request_label.call_args
+    assert call_args.args[0].name == "wait"
+
+    runner.git_client.create_pull_request_reviewer.assert_not_called()
+
+
+def test_review_pr_rule_based_on_vote_then_reset():
+    """
+    This tests the scenario where a rule checks for a vote that is already present on the PR and then the vote is
+    reset because no rule voted.
+    """
+    config_path = os.path.join(TESTS_DIR, "configs/rule_based_on_vote_then_reset.yml")
+    inj = Injector([
+        ConfigModule(config_path),
+        LoggingModule,
+    ])
+    runner = inj.get(Runner)
+    reload_info = runner.config_loader.load_config()
+    runner.config = reload_info.config
+    runner.git_client = mock.MagicMock()
+    runner.git_client.get_threads.return_value = [
+        GitPullRequestCommentThread(
+            comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
+            last_updated_date=datetime(2024, 12, 19),
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
+        ),
+    ]
+    runner.git_client.get_pull_request_iterations.return_value = [
+        GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
+    ]
+    runner.git_client.create_pull_request_label.return_value = WebApiTagDefinition(name="wait")
+
+    # The PR ID should be unique across test cases.
+    pr_id = 160160
+    pr = GitPullRequest(
+        created_by=IdentityRef(display_name="P.R. Author"),
+        is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
+        pull_request_id=pr_id,
+        repository=GitRepository(),
+        reviewers=[
+            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
+        ],
+        source_ref_name=f"branch{pr_id}",
+        status="active",
+        target_ref_name="master",
+    )
+    pr_url = f"https://example.com/pr/{pr_id}"
+
+    runner.review_pr(pr, pr_url, run_state=None)
+
+    assert pr.labels == [WebApiTagDefinition(name="wait")]
+    runner.git_client.create_pull_request_label.assert_called_once()
+    call_args = runner.git_client.create_pull_request_label.call_args
+    assert call_args.args[0].name == "wait"
+
+    runner.git_client.create_pull_request_reviewer.assert_called_once()
+    call_args = runner.git_client.create_pull_request_reviewer.call_args
+    assert call_args.args[0].id == runner.config["user_id"]
+    assert call_args.args[0].vote == NO_VOTE
+    assert call_args.args[2] == pr_id
+    assert call_args.kwargs.get("reviewer_id") == runner.config["user_id"]

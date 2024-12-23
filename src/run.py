@@ -260,15 +260,10 @@ class Runner:
             except BaseException:
                 self.logger.exception("Error while trying to reset votes after changes for \"%s\" at %s", pr.title, pr_url)
 
-        reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
-        should_reset_vote = False
-        if reset_votes_if_no_rule_votes is not None and is_vote_set(reviewer.vote) and reviewer.vote in reset_votes_if_no_rule_votes:
-            reviewer.vote = NO_VOTE
-            should_reset_vote = True
-
         pr_as_dict: dict = pr.as_dict()
         # import json;self.logger.debug("PR: %s", json.dumps(pr_as_dict))
 
+        has_any_rule_voted = False
         for rule in rules:
             # All checks must match.
             if (author_regex := rule.get('author_regex')) is not None:
@@ -367,6 +362,7 @@ class Runner:
             if not pr.is_draft and is_vote_allowed(reviewer.vote, vote):
                 assert vote is not None
                 reviewer.vote = vote
+                has_any_rule_voted = True
                 vote_str = map_int_vote(vote)
                 if not is_dry_run:
                     self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
@@ -377,8 +373,12 @@ class Runner:
                     self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
                                      pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-        # Second half of the implementation of reset_votes_if_no_rule_votes.
-        if should_reset_vote and reviewer.vote == NO_VOTE:
+        reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
+        if (not has_any_rule_voted
+                and reset_votes_if_no_rule_votes is not None
+                and is_vote_set(reviewer.vote)
+                and reviewer.vote in reset_votes_if_no_rule_votes):
+            reviewer.vote = NO_VOTE
             if not is_dry_run:
                 self.logger.info("RESETTING VOTE because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
                 self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)

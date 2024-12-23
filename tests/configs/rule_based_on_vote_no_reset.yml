@@ -1,0 +1,15 @@
+organization_url: 'https://example.com/azure-devops'
+project: ExampleProject
+repository_name: ExampleRepo
+
+user_id: 'code_reviewer_user_id'
+
+log_level: DEBUG
+
+rules:
+  - matchers:
+      - checks:
+          - json_path: '$.reviewers[*].vote'
+            pattern: '^-5$'
+    add_tags:
+      - 'wait'
