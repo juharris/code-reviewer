@@ -662,9 +662,10 @@ def test_review_pr_both_reset_votes_options_reset_after_changes(mock_requests_ge
     mock_diff_response.json.return_value = diff
     mock_requests_get.return_value = mock_diff_response
 
+    call_arg_votes = []
+
     # Use a side_effect to collect the votes in the call args for create_pull_request_reviewer because we reuse the
     # same reviewer object that is passed to the first call and we change the vote value later.
-    call_arg_votes = []
     def mock_create_pull_request_reviewer(*args, **kwargs):
         call_arg_votes.append(args[0].vote)
     runner.git_client.create_pull_request_reviewer.side_effect = mock_create_pull_request_reviewer

@@ -370,12 +370,12 @@ class Runner:
                     vote_str = map_int_vote(vote)
                     if not is_dry_run:
                         self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
-                                        pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+                                         pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
                         self.git_client.create_pull_request_reviewer(
                             reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
                     else:
                         self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
-                                        pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+                                         pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
         reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
         if (not has_any_rule_voted
@@ -385,7 +385,8 @@ class Runner:
             reviewer.vote = NO_VOTE
             if not is_dry_run:
                 self.logger.info("RESETTING VOTE because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
-                self.git_client.create_pull_request_reviewer(reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+                self.git_client.create_pull_request_reviewer(
+                    reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
             else:
                 self.logger.info("Would reset vote because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
 
