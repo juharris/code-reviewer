@@ -359,19 +359,23 @@ class Runner:
             # Votes were converted when the config was loaded.
             assert vote is None or isinstance(vote, int), f"Vote must be an integer. Got: {vote} with type: {type(vote)}"
             # Can't vote on a draft.
-            if not pr.is_draft and is_vote_allowed(reviewer.vote, vote):
-                assert vote is not None
-                reviewer.vote = vote
-                has_any_rule_voted = True
-                vote_str = map_int_vote(vote)
-                if not is_dry_run:
-                    self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
-                                     pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
-                    self.git_client.create_pull_request_reviewer(
-                        reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
-                else:
-                    self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
-                                     pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+            if not pr.is_draft:
+                is_allowed = is_vote_allowed(reviewer.vote, vote)
+                # If the new vote is the same as the current vote, don't try to set it again, but do count the rule as
+                # having voted.
+                has_any_rule_voted = is_allowed or (vote is not None and vote == reviewer.vote)
+                if is_allowed:
+                    assert vote is not None
+                    reviewer.vote = vote
+                    vote_str = map_int_vote(vote)
+                    if not is_dry_run:
+                        self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
+                                        pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+                        self.git_client.create_pull_request_reviewer(
+                            reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+                    else:
+                        self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
+                                        pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
         reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
         if (not has_any_rule_voted
