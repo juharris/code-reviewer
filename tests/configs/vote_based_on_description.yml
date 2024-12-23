@@ -14,6 +14,6 @@ reset_votes_if_no_rule_votes:
 
 rules:
   - vote: wait
-    description_pattern: 'forbidden phrase'
+    description_pattern: '.*?\bforbidden phrase\b'
     comment: 'Please do not use the forbidden phrase in the description.'
     comment_id: 'description-forbidden-phrase'

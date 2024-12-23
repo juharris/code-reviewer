@@ -5,6 +5,7 @@ from unittest import mock
 from azure.devops.released.git import (
     Comment,
     GitCommitDiffs,
+    GitCommitRef,
     GitPullRequest,
     GitPullRequestCommentThread,
     GitPullRequestIteration,
@@ -49,16 +50,21 @@ def test_review_pr_no_rules_reset_votes_after_changes_no_reset():
         GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
     ]
 
-    pr_id = 123
+    # The PR ID should be unique across test cases.
+    pr_id = 100100
     pr = GitPullRequest(
         created_by=IdentityRef(display_name="P.R. Author"),
         is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
         pull_request_id=pr_id,
         repository=GitRepository(),
         reviewers=[
             IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
         ],
+        source_ref_name=f"branch{pr_id}",
         status="active",
+        target_ref_name="master",
     )
     pr_url = f"https://example.com/pr/{pr_id}"
 
@@ -112,16 +118,21 @@ def test_review_pr_vote_based_on_diff_pattern_reset(mock_requests_get):
     mock_diff_response.json.return_value = diff
     mock_requests_get.return_value = mock_diff_response
 
-    pr_id = 123
+    # The PR ID should be unique across test cases.
+    pr_id = 110110
     pr = GitPullRequest(
         created_by=IdentityRef(display_name="P.R. Author"),
         is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
         pull_request_id=pr_id,
         repository=GitRepository(),
         reviewers=[
             IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
         ],
+        source_ref_name=f"branch{pr_id}",
         status="active",
+        target_ref_name="master",
     )
     pr_url = f"https://example.com/pr/{pr_id}"
 
@@ -185,16 +196,21 @@ def test_review_pr_vote_based_on_diff_pattern_no_reset(mock_requests_get):
     mock_diff_response.json.return_value = diff
     mock_requests_get.return_value = mock_diff_response
 
-    pr_id = 123
+    # The PR ID should be unique across test cases.
+    pr_id = 120120
     pr = GitPullRequest(
         created_by=IdentityRef(display_name="P.R. Author"),
         is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
         pull_request_id=pr_id,
         repository=GitRepository(),
         reviewers=[
             IdentityRefWithVote(id=runner.config["user_id"], vote=APPROVE_VOTE),
         ],
+        source_ref_name=f"branch{pr_id}",
         status="active",
+        target_ref_name="master",
     )
     pr_url = f"https://example.com/pr/{pr_id}"
 
@@ -203,7 +219,53 @@ def test_review_pr_vote_based_on_diff_pattern_no_reset(mock_requests_get):
     runner.git_client.create_pull_request_reviewer.assert_not_called()
 
 
-def test_review_pr_vote_based_on_description():
+@mock.patch.object(requests, "get")
+def test_review_pr_vote_based_on_description_vote(mock_requests_get):
+    """
+    This tests the scenario where there's a rule that votes based on the PR description and the rule matches.
+    """
+    config_path = os.path.join(TESTS_DIR, "configs/vote_based_on_description.yml")
+    inj = Injector([
+        ConfigModule(config_path),
+        LoggingModule,
+    ])
+    runner = inj.get(Runner)
+    reload_info = runner.config_loader.load_config()
+    runner.config = reload_info.config
+    runner.git_client = mock.MagicMock()
+    runner.git_client.get_threads.return_value = []
+    runner.git_client.get_pull_request_iterations.return_value = [
+        GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
+    ]
+
+    # The PR ID should be unique across test cases.
+    pr_id = 130130
+    pr = GitPullRequest(
+        created_by=IdentityRef(display_name="P.R. Author"),
+        description="This is a bad description containing the forbidden phrase.",
+        is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
+        pull_request_id=pr_id,
+        repository=GitRepository(),
+        reviewers=[],
+        source_ref_name=f"branch{pr_id}",
+        status="active",
+        target_ref_name="master",
+    )
+    pr_url = f"https://example.com/pr/{pr_id}"
+
+    runner.review_pr(pr, pr_url, run_state=None)
+
+    runner.git_client.create_pull_request_reviewer.assert_called_once()
+    call_args = runner.git_client.create_pull_request_reviewer.call_args
+    assert call_args.args[0].id == runner.config["user_id"]
+    assert call_args.args[0].vote == WAIT_VOTE
+    assert call_args.args[2] == pr_id
+    assert call_args.kwargs.get("reviewer_id") == runner.config["user_id"]
+
+
+def test_review_pr_vote_based_on_description_reset():
     """
     This tests the scenario where there's a rule that votes based on the PR description and the vote has already been
     applied to the PR and the PR description was updated and now the vote needs to be reset.
@@ -228,17 +290,22 @@ def test_review_pr_vote_based_on_description():
         GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
     ]
 
-    pr_id = 123
+    # The PR ID should be unique across test cases.
+    pr_id = 140140
     pr = GitPullRequest(
         created_by=IdentityRef(display_name="P.R. Author"),
         description="This is a good description.",
         is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
         pull_request_id=pr_id,
         repository=GitRepository(),
         reviewers=[
             IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
         ],
+        source_ref_name=f"branch{pr_id}",
         status="active",
+        target_ref_name="master",
     )
     pr_url = f"https://example.com/pr/{pr_id}"
 
@@ -250,3 +317,56 @@ def test_review_pr_vote_based_on_description():
     assert call_args.args[0].vote == NO_VOTE
     assert call_args.args[2] == pr_id
     assert call_args.kwargs.get("reviewer_id") == runner.config["user_id"]
+
+
+def test_review_pr_vote_based_on_description_no_double_reset():
+    """
+    This tests that the vote won't be reset again if it's already been reset before.
+    """
+    config_path = os.path.join(TESTS_DIR, "configs/vote_based_on_description.yml")
+    inj = Injector([
+        ConfigModule(config_path),
+        LoggingModule,
+    ])
+    runner = inj.get(Runner)
+    reload_info = runner.config_loader.load_config()
+    runner.config = reload_info.config
+    runner.git_client = mock.MagicMock()
+    runner.git_client.get_threads.return_value = [
+        GitPullRequestCommentThread(
+            comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
+            last_updated_date=datetime(2024, 12, 19),
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
+        ),
+        GitPullRequestCommentThread(
+            comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
+            last_updated_date=datetime(2024, 12, 20),
+            properties={"CodeReviewVoteResult": {"$value": NO_VOTE}},
+        ),
+    ]
+    runner.git_client.get_pull_request_iterations.return_value = [
+        GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
+    ]
+
+    # The PR ID should be unique across test cases.
+    pr_id = 150150
+    pr = GitPullRequest(
+        created_by=IdentityRef(display_name="P.R. Author"),
+        description="This is a good description.",
+        is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
+        pull_request_id=pr_id,
+        repository=GitRepository(),
+        reviewers=[
+            IdentityRefWithVote(id=runner.config["user_id"], vote=NO_VOTE),
+        ],
+        source_ref_name=f"branch{pr_id}",
+        status="active",
+        target_ref_name="master",
+    )
+    pr_url = f"https://example.com/pr/{pr_id}"
+
+    runner.review_pr(pr, pr_url, run_state=None)
+
+    runner.git_client.create_pull_request_reviewer.assert_not_called()
