@@ -377,6 +377,56 @@ def test_review_pr_vote_based_on_description_no_double_reset():
     runner.git_client.create_pull_request_reviewer.assert_not_called()
 
 
+def test_review_pr_vote_approve():
+    """
+    This tests that a rule that sets the vote to the same "approve" value that it's already set to is recognized by
+    reset_votes_if_no_rule_votes as having voted.
+    """
+    config_path = os.path.join(TESTS_DIR, "configs/vote_approve.yml")
+    inj = Injector([
+        ConfigModule(config_path),
+        LoggingModule,
+    ])
+    runner = inj.get(Runner)
+    reload_info = runner.config_loader.load_config()
+    runner.config = reload_info.config
+    runner.rest_api_kwargs = {}
+    runner.git_client = mock.MagicMock()
+    runner.git_client.get_threads.return_value = [
+        GitPullRequestCommentThread(
+            comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
+            last_updated_date=datetime(2024, 12, 19),
+            properties={"CodeReviewVoteResult": {"$value": APPROVE_VOTE}},
+        ),
+    ]
+    runner.git_client.get_pull_request_iterations.return_value = [
+        GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
+    ]
+
+    # The PR ID should be unique across test cases.
+    pr_id = 155155
+    pr = GitPullRequest(
+        created_by=IdentityRef(display_name="P.R. Author"),
+        is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
+        pull_request_id=pr_id,
+        repository=GitRepository(),
+        reviewers=[
+            IdentityRefWithVote(id=runner.config["user_id"], vote=APPROVE_VOTE),
+        ],
+        source_ref_name=f"branch{pr_id}",
+        status="active",
+        target_ref_name="master",
+        title="Auto-format code",
+    )
+    pr_url = f"https://example.com/pr/{pr_id}"
+
+    runner.review_pr(pr, pr_url, run_state=None)
+
+    runner.git_client.create_pull_request_reviewer.assert_not_called()
+
+
 def test_review_pr_rule_based_on_vote_no_reset():
     """
     This tests the scenario where a rule checks for a vote that is already present on the PR and then the vote is
