@@ -32,6 +32,20 @@ RUN ./configure --enable-optimizations && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && \
     curl -sSL https://install.python-poetry.org | python3 - --version 1.8.2
 
+# Uninstall dependencies that are only needed for the above installations. This is for security reasons, so any
+# vunerabilities in these packages don't affect the final image.
+RUN tdnf -y remove \
+        build-essential \
+        bzip2-devel \
+        ca-certificates \
+        gcc \
+        libffi-devel \
+        make \
+        openssl-devel \
+        tar \
+        wget \
+        zlib-devel
+
 WORKDIR /code
 
 COPY poetry.lock pyproject.toml ./
