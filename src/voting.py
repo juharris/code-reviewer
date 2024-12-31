@@ -5,6 +5,7 @@ APPROVE_VOTE = 10
 APPROVE_WITH_SUGGESTIONS_VOTE = 5
 NO_VOTE = 0
 WAIT_VOTE = -5
+REJECT_VOTE = -10
 
 
 def map_vote(vote: Optional[int | str]) -> Optional[int]:
@@ -14,7 +15,7 @@ def map_vote(vote: Optional[int | str]) -> Optional[int]:
         f"`vote` must be a string. Got: \"{vote}\" with type: {type(vote)}."
     match vote.lower():
         case 'reject':
-            return -10
+            return REJECT_VOTE
         case 'wait':
             return WAIT_VOTE
         case 'none' | 'reset':
