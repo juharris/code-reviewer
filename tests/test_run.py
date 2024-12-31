@@ -377,6 +377,79 @@ def test_review_pr_vote_based_on_description_no_double_reset():
     runner.git_client.create_pull_request_reviewer.assert_not_called()
 
 
+@mock.patch.object(requests, "get")
+def test_review_pr_vote_based_on_diff_pattern_new(mock_requests_get):
+    """
+    This tests the scenario where the vote is already set to wait and a rule based on a diff pattern applies, but the
+    diff hasn't changed. The vote should not be reset because the diff rule would have voted if it hadn't been for
+    caching of the latest seen commit.
+    """
+    # TODO Better name for config file and test method!
+    config_path = os.path.join(TESTS_DIR, "configs/vote_based_on_diff_pattern_new.yml")
+    inj = Injector([
+        ConfigModule(config_path),
+        LoggingModule,
+    ])
+    runner = inj.get(Runner)
+    reload_info = runner.config_loader.load_config()
+    runner.config = reload_info.config
+    runner.rest_api_kwargs = {}
+    runner.git_client = mock.MagicMock()
+    runner.git_client.get_threads.return_value = [
+        GitPullRequestCommentThread(
+            comments=[Comment(author=IdentityRef(id=runner.config["user_id"]))],
+            last_updated_date=datetime(2024, 12, 19),
+            properties={"CodeReviewVoteResult": {"$value": WAIT_VOTE}},
+        ),
+    ]
+    runner.git_client.get_pull_request_iterations.return_value = [
+        GitPullRequestIteration(updated_date=datetime(2024, 12, 18)),
+    ]
+    runner.git_client.get_commit_diffs.return_value = GitCommitDiffs(
+        changes=[{
+            "changeType": "edit",
+            "item": {
+                "isFolder": False,
+                "path": "foo.py",
+            },
+        }],
+    )
+    diff = Diff(blocks=[Block(
+        changeType=1,
+        mLines=["    bar = foo.deprecated_method()"],
+        mLine=5,
+        mLinesCount=1,
+    )])
+    mock_diff_response = mock.MagicMock()
+    mock_diff_response.json.return_value = diff
+    mock_requests_get.return_value = mock_diff_response
+
+    # The PR ID should be unique across test cases.
+    pr_id = 151151
+    pr = GitPullRequest(
+        created_by=IdentityRef(display_name="P.R. Author"),
+        description="This is a good description.",
+        is_draft=False,
+        # Reusing the PR ID as the commit ID to ensure unique commit IDs across test cases.
+        last_merge_source_commit=GitCommitRef(commit_id=str(pr_id)),
+        pull_request_id=pr_id,
+        repository=GitRepository(),
+        reviewers=[
+            IdentityRefWithVote(id=runner.config["user_id"], vote=WAIT_VOTE),
+        ],
+        source_ref_name=f"branch{pr_id}",
+        status="active",
+        target_ref_name="master",
+    )
+    pr_url = f"https://example.com/pr/{pr_id}"
+
+    runner.pr_url_to_latest_commit_seen[pr_url] = pr.last_merge_source_commit
+
+    runner.review_pr(pr, pr_url, run_state=None)
+
+    runner.git_client.create_pull_request_reviewer.assert_not_called()
+
+
 def test_review_pr_change_reject_vote_to_wait():
     """
     This tests the scenario where the vote is already set to reject, but the PR changed and now a rule is voting to
@@ -484,8 +557,8 @@ def test_review_pr_vote_approve():
 
 def test_review_pr_rule_based_on_vote_no_reset():
     """
-    This tests the scenario where a rule checks for a vote that is already present on the PR and then the vote is
-    reset because no rule voted.
+    This tests the scenario where a rule checks for a vote that is already present on the PR and the vote is never
+    reset.
     """
     config_path = os.path.join(TESTS_DIR, "configs/rule_based_on_vote_no_reset.yml")
     inj = Injector([
