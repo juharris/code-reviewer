@@ -263,7 +263,18 @@ class Runner:
         pr_as_dict: dict = pr.as_dict()
         # import json;self.logger.debug("PR: %s", json.dumps(pr_as_dict))
 
-        has_any_rule_voted = False
+        reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
+        should_reset_vote = False
+        preliminary_vote = reviewer.vote
+        if (reset_votes_if_no_rule_votes is not None
+                and is_vote_set(reviewer.vote)
+                and reviewer.vote in reset_votes_if_no_rule_votes):
+            # Preliminarily reset the vote and only call the API to reset it after all the rules have run. This is to
+            # prevent the PR from getting merged prematurely if our user's vote is the only blocking one and there is
+            # a rule that re-establishes the blocking vote. It also prevents spurious API calls and notifications.
+            preliminary_vote = NO_VOTE
+            should_reset_vote = True
+
         for rule in rules:
             # All checks must match.
             if (author_regex := rule.get('author_regex')) is not None:
@@ -359,13 +370,11 @@ class Runner:
             # Votes were converted when the config was loaded.
             assert vote is None or isinstance(vote, int), f"Vote must be an integer. Got: {vote} with type: {type(vote)}"
             # Can't vote on a draft.
-            if not pr.is_draft:
-                is_allowed = is_vote_allowed(reviewer.vote, vote)
-                # If the new vote is the same as the current vote, don't try to set it again, but do count the rule as
-                # having voted.
-                has_any_rule_voted = is_allowed or (vote is not None and vote == reviewer.vote)
-                if is_allowed:
-                    assert vote is not None
+            if not pr.is_draft and is_vote_allowed(preliminary_vote, vote):
+                assert vote is not None
+                preliminary_vote = vote
+                should_reset_vote = False
+                if vote != reviewer.vote:
                     reviewer.vote = vote
                     vote_str = map_int_vote(vote)
                     if not is_dry_run:
@@ -377,12 +386,8 @@ class Runner:
                         self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
                                          pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
 
-        reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
-        if (not has_any_rule_voted
-                and reset_votes_if_no_rule_votes is not None
-                and is_vote_set(reviewer.vote)
-                and reviewer.vote in reset_votes_if_no_rule_votes):
-            reviewer.vote = NO_VOTE
+        if should_reset_vote:
+            reviewer.vote = preliminary_vote = NO_VOTE
             if not is_dry_run:
                 self.logger.info("RESETTING VOTE because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
                 self.git_client.create_pull_request_reviewer(
