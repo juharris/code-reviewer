@@ -1,0 +1,15 @@
+organization_url: 'https://example.com/azure-devops'
+project: ExampleProject
+repository_name: ExampleRepo
+
+user_id: 'code_reviewer_user_id'
+
+log_level: DEBUG
+
+reset_votes_after_changes:
+  - APPROVE
+  - APPROVE_WITH_SUGGESTIONS
+  - WAIT
+  - REJECT
+
+rules: []

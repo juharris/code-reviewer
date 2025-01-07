@@ -1,0 +1,20 @@
+organization_url: 'https://example.com/azure-devops'
+project: ExampleProject
+repository_name: ExampleRepo
+
+user_id: 'code_reviewer_user_id'
+
+log_level: DEBUG
+
+reset_votes_after_changes:
+  - APPROVE
+  - APPROVE_WITH_SUGGESTIONS
+  - WAIT
+  - REJECT
+
+rules:
+  - vote: wait
+    path_pattern: '.*\.py$'
+    diff_pattern: '.*?\.deprecated_method\(\)'
+    comment: 'Please do not use the deprecated method `deprecated_method`. Use `new_method` instead.'
+    comment_id: 'deprecated-method'

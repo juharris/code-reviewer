@@ -37,7 +37,7 @@ from matcher_checker import MatcherChecker
 from pr_review_state import PrReviewState
 from run_state import RunState
 from suggestions import Suggester
-from voting import NO_VOTE, is_vote_allowed, map_int_vote
+from voting import NO_VOTE, is_vote_allowed, is_vote_set, map_int_vote
 
 # See
 # https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-requests?view=azure-devops-rest-7.0&tabs=HTTP
@@ -263,6 +263,18 @@ class Runner:
         pr_as_dict: dict = pr.as_dict()
         # import json;self.logger.debug("PR: %s", json.dumps(pr_as_dict))
 
+        reset_votes_if_no_rule_votes = self.config.get('reset_votes_if_no_rule_votes')
+        should_reset_vote = False
+        preliminary_vote = reviewer.vote
+        if (reset_votes_if_no_rule_votes is not None
+                and is_vote_set(reviewer.vote)
+                and reviewer.vote in reset_votes_if_no_rule_votes):
+            # Preliminarily reset the vote and only call the API to reset it after all the rules have run. This is to
+            # prevent the PR from getting merged prematurely if our user's vote is the only blocking one and there is
+            # a rule that re-establishes the blocking vote. It also prevents spurious API calls and notifications.
+            preliminary_vote = NO_VOTE
+            should_reset_vote = True
+
         for rule in rules:
             # All checks must match.
             if (author_regex := rule.get('author_regex')) is not None:
@@ -358,18 +370,30 @@ class Runner:
             # Votes were converted when the config was loaded.
             assert vote is None or isinstance(vote, int), f"Vote must be an integer. Got: {vote} with type: {type(vote)}"
             # Can't vote on a draft.
-            if not pr.is_draft and is_vote_allowed(reviewer.vote, vote):
+            if not pr.is_draft and is_vote_allowed(preliminary_vote, vote):
                 assert vote is not None
-                reviewer.vote = vote
-                vote_str = map_int_vote(vote)
-                if not is_dry_run:
-                    self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
-                                     pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
-                    self.git_client.create_pull_request_reviewer(
-                        reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
-                else:
-                    self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
-                                     pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+                preliminary_vote = vote
+                should_reset_vote = False
+                if vote != reviewer.vote:
+                    reviewer.vote = vote
+                    vote_str = map_int_vote(vote)
+                    if not is_dry_run:
+                        self.logger.info("SETTING VOTE: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
+                                         pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+                        self.git_client.create_pull_request_reviewer(
+                            reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+                    else:
+                        self.logger.info("Would vote: '%s'\nTitle: \"%s\"\nBy %s (%s)\n%s", vote_str,
+                                         pr.title, pr_author.display_name, pr_author.unique_name, pr_url)
+
+        if should_reset_vote:
+            reviewer.vote = preliminary_vote = NO_VOTE
+            if not is_dry_run:
+                self.logger.info("RESETTING VOTE because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
+                self.git_client.create_pull_request_reviewer(
+                    reviewer, repository_id, pr.pull_request_id, reviewer_id=user_id, project=project)
+            else:
+                self.logger.info("Would reset vote because no rule voted on: \"%s\"\n  URL: %s", pr.title, pr_url)
 
     def check_votes(self,
                     pr: GitPullRequest,
@@ -379,7 +403,7 @@ class Runner:
                     reviewer: IdentityRefWithVote,
                     reset_votes_after_changes: Collection[int],
                     threads: Optional[list[GitPullRequestCommentThread]]) -> list[GitPullRequestCommentThread] | None:
-        if pr.is_draft or reviewer.vote not in reset_votes_after_changes:
+        if pr.is_draft or not is_vote_set(reviewer.vote) or reviewer.vote not in reset_votes_after_changes:
             # Nothing to reset.
             return threads
 

@@ -146,6 +146,18 @@ wait_after_review_s: 666
 # Defaults to false.
 # is_dry_run: true
 
+# Optional: Reset the vote if none of the rules in this config file cast a vote during the current run.
+# This is especially useful when running the Code Reviewer as an independent bot with its own user account (rather than running it on behalf of a human user).
+# It allows resetting the vote in cases where an issue that was detected by a rule has been corrected without changing the code, for example by changing the PR description.
+# A rule is considered to have cast a vote if its checks match and it has a 'vote' action and its vote would have been applied to the PR if the vote on the PR had been reset first.
+# So, even if the rule's 'vote' action would set the vote to the same value it's already set to or to a less rejective value, the rule still counts as having voted, meaning that it will prevent the vote from being reset.
+# (Also see the docs for voting below.)
+# reset_votes_if_no_rule_votes:
+#   - APPROVE
+#   - APPROVE_WITH_SUGGESTIONS
+#   - WAIT
+#   - REJECT
+
 # All checks within each rule must match for the rule to be applied.
 
 # Rules can have:
